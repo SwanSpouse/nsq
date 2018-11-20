@@ -113,6 +113,7 @@ func Decorate(f APIHandler, ds ...Decorator) httprouter.Handle {
 	decorated := f
 	// 在执行的时候会先执行f 然后依次执行每个ds？
 	// 这就相当于给f 外面套了一层一层的壳子。然后在最终执行的时候是需要从里向外执行的
+	// 在执行的时候会首先执行最后一个decorate ?
 	for _, decorate := range ds {
 		decorated = decorate(decorated)
 	}
