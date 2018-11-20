@@ -11,6 +11,7 @@ import (
 	"github.com/nsqio/nsq/internal/lg"
 )
 
+// 在APIHandler外面套了一层
 type Decorator func(APIHandler) APIHandler
 
 type APIHandler func(http.ResponseWriter, *http.Request, httprouter.Params) (interface{}, error)
@@ -32,6 +33,7 @@ func acceptVersion(req *http.Request) int {
 	return 0
 }
 
+// 对返回值为string和[]byte的结果进行输出
 func PlainText(f APIHandler) APIHandler {
 	return func(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 		code := 200
@@ -48,8 +50,10 @@ func PlainText(f APIHandler) APIHandler {
 			w.WriteHeader(code)
 			w.Write(d)
 		default:
+			// 在这里打出未知数据类型
 			panic(fmt.Sprintf("unknown response type %T", data))
 		}
+		// TODO @lmj 这里不应该把f的执行结果原路返回吗？？？其实是在上面直接写入到response里面去了。
 		return nil, nil
 	}
 }
@@ -104,8 +108,10 @@ func RespondV1(w http.ResponseWriter, code int, data interface{}) {
 	w.Write(response)
 }
 
+// 一个请求过来之后会依次经过f, ds...
 func Decorate(f APIHandler, ds ...Decorator) httprouter.Handle {
 	decorated := f
+	// 在执行的时候会首先执行最后一个decorate ?
 	for _, decorate := range ds {
 		decorated = decorate(decorated)
 	}
@@ -118,14 +124,15 @@ func Log(logf lg.AppLogFunc) Decorator {
 	return func(f APIHandler) APIHandler {
 		return func(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 			start := time.Now()
+			// 首先执行 APIHandler f，然后对f的耗时和状态码进行统计
 			response, err := f(w, req, ps)
 			elapsed := time.Since(start)
 			status := 200
 			if e, ok := err.(Err); ok {
 				status = e.Code
 			}
-			logf(lg.INFO, "%d %s %s (%s) %s",
-				status, req.Method, req.URL.RequestURI(), req.RemoteAddr, elapsed)
+			// 在这里通过log info来进行记录
+			logf(lg.INFO, "%d %s %s (%s) %s", status, req.Method, req.URL.RequestURI(), req.RemoteAddr, elapsed)
 			return response, err
 		}
 	}

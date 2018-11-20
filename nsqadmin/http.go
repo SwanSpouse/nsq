@@ -24,6 +24,7 @@ import (
 	"github.com/nsqio/nsq/internal/version"
 )
 
+// 如果有错误信息的话，就把所有错误信息合并。TODO @lmj 为啥是WARNING呢？
 func maybeWarnMsg(msgs []string) string {
 	if len(msgs) > 0 {
 		return "WARNING: " + strings.Join(msgs, "; ")
@@ -58,8 +59,8 @@ type httpServer struct {
 func NewHTTPServer(ctx *Context) *httpServer {
 	log := http_api.Log(ctx.nsqadmin.logf)
 
-	client := http_api.NewClient(ctx.nsqadmin.httpClientTLSConfig, ctx.nsqadmin.getOpts().HTTPClientConnectTimeout,
-		ctx.nsqadmin.getOpts().HTTPClientRequestTimeout)
+	// 创建一个http的Client
+	client := http_api.NewClient(ctx.nsqadmin.httpClientTLSConfig, ctx.nsqadmin.getOpts().HTTPClientConnectTimeout, ctx.nsqadmin.getOpts().HTTPClientRequestTimeout)
 
 	router := httprouter.New()
 	router.HandleMethodNotAllowed = true
@@ -78,9 +79,11 @@ func NewHTTPServer(ctx *Context) *httpServer {
 		return path.Join(s.basePath, p)
 	}
 
+	// 注册各种handler 典型的RESTFUL API设计
 	router.Handle("GET", bp("/"), http_api.Decorate(s.indexHandler, log))
 	router.Handle("GET", bp("/ping"), http_api.Decorate(s.pingHandler, log, http_api.PlainText))
 
+	// TODO @lmj 这些是干啥的，没看懂。只是装载一个html的页面吗？为啥我没有在js代码里面找到请求下面接口的代码
 	router.Handle("GET", bp("/topics"), http_api.Decorate(s.indexHandler, log))
 	router.Handle("GET", bp("/topics/:topic"), http_api.Decorate(s.indexHandler, log))
 	router.Handle("GET", bp("/topics/:topic/:channel"), http_api.Decorate(s.indexHandler, log))
@@ -194,14 +197,16 @@ func (s *httpServer) staticAssetHandler(w http.ResponseWriter, req *http.Request
 	return string(asset), nil
 }
 
+// 返回topic和channel的map topic name : channel list
 func (s *httpServer) topicsHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	var messages []string
 
 	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
-		return nil, http_api.Err{400, err.Error()}
+		return nil, http_api.Err{Code: 400, Text: err.Error()}
 	}
 
+	// 向NSQLookupd查询所有的topic
 	var topics []string
 	if len(s.ctx.nsqadmin.getOpts().NSQLookupdHTTPAddresses) != 0 {
 		topics, err = s.ci.GetLookupdTopics(s.ctx.nsqadmin.getOpts().NSQLookupdHTTPAddresses)
@@ -220,16 +225,15 @@ func (s *httpServer) topicsHandler(w http.ResponseWriter, req *http.Request, ps 
 
 	inactive, _ := reqParams.Get("inactive")
 	if inactive == "true" {
+		// TODO @lmj inactive的topic 是啥意思？获取inactive状态的topic
 		topicChannelMap := make(map[string][]string)
 		if len(s.ctx.nsqadmin.getOpts().NSQLookupdHTTPAddresses) == 0 {
 			goto respond
 		}
 		for _, topicName := range topics {
-			producers, _ := s.ci.GetLookupdTopicProducers(
-				topicName, s.ctx.nsqadmin.getOpts().NSQLookupdHTTPAddresses)
+			producers, _ := s.ci.GetLookupdTopicProducers(topicName, s.ctx.nsqadmin.getOpts().NSQLookupdHTTPAddresses)
 			if len(producers) == 0 {
-				topicChannels, _ := s.ci.GetLookupdTopicChannels(
-					topicName, s.ctx.nsqadmin.getOpts().NSQLookupdHTTPAddresses)
+				topicChannels, _ := s.ci.GetLookupdTopicChannels(topicName, s.ctx.nsqadmin.getOpts().NSQLookupdHTTPAddresses)
 				topicChannelMap[topicName] = topicChannels
 			}
 		}
@@ -246,14 +250,13 @@ func (s *httpServer) topicsHandler(w http.ResponseWriter, req *http.Request, ps 
 	}{topics, maybeWarnMsg(messages)}, nil
 }
 
+// 单个topic的消息状态
 func (s *httpServer) topicHandler(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	var messages []string
 
 	topicName := ps.ByName("topic")
 
-	producers, err := s.ci.GetTopicProducers(topicName,
-		s.ctx.nsqadmin.getOpts().NSQLookupdHTTPAddresses,
-		s.ctx.nsqadmin.getOpts().NSQDHTTPAddresses)
+	producers, err := s.ci.GetTopicProducers(topicName, s.ctx.nsqadmin.getOpts().NSQLookupdHTTPAddresses, s.ctx.nsqadmin.getOpts().NSQDHTTPAddresses)
 	if err != nil {
 		pe, ok := err.(clusterinfo.PartialErr)
 		if !ok {
@@ -263,6 +266,7 @@ func (s *httpServer) topicHandler(w http.ResponseWriter, req *http.Request, ps h
 		s.ctx.nsqadmin.logf(LOG_WARN, "%s", err)
 		messages = append(messages, pe.Error())
 	}
+	// 向nsqd查询topic的状态
 	topicStats, _, err := s.ci.GetNSQDStats(producers, topicName, "", false)
 	if err != nil {
 		pe, ok := err.(clusterinfo.PartialErr)

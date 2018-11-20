@@ -67,5 +67,6 @@ func (s *httpServer) notifyAdminAction(action, topic, channel, node string, req 
 		Via:       via,
 	}
 	// Perform all work in a new goroutine so this never blocks
+	// TODO @lmj 写入chan的操作为啥要go出去呢？难道会阻塞？
 	go func() { s.ctx.nsqadmin.notifications <- a }()
 }
