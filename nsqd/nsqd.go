@@ -274,6 +274,7 @@ func (n *NSQD) Main() error {
 		})
 	}
 
+	// 起了三个goroutine来分别处理
 	n.waitGroup.Wrap(n.queueScanLoop)
 	n.waitGroup.Wrap(n.lookupLoop)
 	if n.getOpts().StatsdAddress != "" {
@@ -284,6 +285,7 @@ func (n *NSQD) Main() error {
 	return err
 }
 
+// 居然是json格式存储的，这里记录了meta数据的数据格式。
 type meta struct {
 	Topics []struct {
 		Name     string `json:"name"`
@@ -305,6 +307,7 @@ func readOrEmpty(fn string) ([]byte, error) {
 		if !os.IsNotExist(err) {
 			return nil, fmt.Errorf("failed to read metadata from %s - %s", fn, err)
 		}
+		// 如果是不存在的话，会继续往下走，返回一个两个nil？
 	}
 	return data, nil
 }
@@ -323,16 +326,19 @@ func writeSyncFile(fn string, data []byte) error {
 	return err
 }
 
+// 加载nsqd所负责的topic channel 以及 topic 状态 pause与否等信息
 func (n *NSQD) LoadMetadata() error {
 	atomic.StoreInt32(&n.isLoading, 1)
 	defer atomic.StoreInt32(&n.isLoading, 0)
 
+	// 路径拼上nsqd.dat得到最终meta数据存储路径
 	fn := newMetadataFile(n.getOpts())
 
 	data, err := readOrEmpty(fn)
 	if err != nil {
 		return err
 	}
+	// 没有找到任何数据
 	if data == nil {
 		return nil // fresh start
 	}
@@ -344,12 +350,15 @@ func (n *NSQD) LoadMetadata() error {
 	}
 
 	for _, t := range m.Topics {
+		// 如果出现不合法的名字就直接continue
 		if !protocol.IsValidTopicName(t.Name) {
 			n.logf(LOG_WARN, "skipping creation of invalid topic %s", t.Name)
 			continue
 		}
+		// TODO @lmj 这里topic不可能为空？这里相当于GetOrCreateTopic
 		topic := n.GetTopic(t.Name)
 		if t.Paused {
+			// 统一状态
 			topic.Pause()
 		}
 		for _, c := range t.Channels {
@@ -357,11 +366,13 @@ func (n *NSQD) LoadMetadata() error {
 				n.logf(LOG_WARN, "skipping creation of invalid channel %s", c.Name)
 				continue
 			}
+			// 这个其实也相当于GetOrCreateChannel
 			channel := topic.GetChannel(c.Name)
 			if c.Paused {
 				channel.Pause()
 			}
 		}
+		// 启动topic
 		topic.Start()
 	}
 	return nil
@@ -407,13 +418,14 @@ func (n *NSQD) PersistMetadata() error {
 	if err != nil {
 		return err
 	}
-
+	// tmp文件名会拼上一个随机数
 	tmpFileName := fmt.Sprintf("%s.%d.tmp", fileName, rand.Int())
-
+	// 写文件
 	err = writeSyncFile(tmpFileName, data)
 	if err != nil {
 		return err
 	}
+	// 把文件进行重命名，如果源文件存在的话会进行替换。
 	err = os.Rename(tmpFileName, fileName)
 	if err != nil {
 		return err
@@ -440,6 +452,7 @@ func (n *NSQD) Exit() {
 	}
 
 	n.Lock()
+	// 在退出之前要进行持久化
 	err := n.PersistMetadata()
 	if err != nil {
 		n.logf(LOG_ERROR, "failed to persist metadata - %s", err)
@@ -467,22 +480,22 @@ func (n *NSQD) GetTopic(topicName string) *Topic {
 	if ok {
 		return t
 	}
-
+	// 大部分情况下，上面的代码就可以解决这个函数的所有问题。之所以加Lock是因为想把Topic插入到map中
 	n.Lock()
-
 	t, ok = n.topicMap[topicName]
 	if ok {
 		n.Unlock()
 		return t
 	}
+	// 设置删除此topic的callback
 	deleteCallback := func(t *Topic) {
 		n.DeleteExistingTopic(t.name)
 	}
+	// 若没有找到的话就会创建一个Topic
 	t = NewTopic(topicName, &context{n}, deleteCallback)
 	n.topicMap[topicName] = t
 
 	n.Unlock()
-
 	n.logf(LOG_INFO, "TOPIC(%s): created", t.name)
 	// topic is created but messagePump not yet started
 
@@ -662,8 +675,10 @@ func (n *NSQD) queueScanLoop() {
 	channels := n.channels()
 	n.resizePool(len(channels), workCh, responseCh, closeCh)
 
+	// 循环
 	for {
 		select {
+		// 每间隔QueueScanInterval就会触发一次
 		case <-workTicker.C:
 			if len(channels) == 0 {
 				continue
@@ -676,16 +691,18 @@ func (n *NSQD) queueScanLoop() {
 			goto exit
 		}
 
+		// 如果配置的大于了当前的channel数量，则使用当前的数量
 		num := n.getOpts().QueueScanSelectionCount
 		if num > len(channels) {
 			num = len(channels)
 		}
 
 	loop:
+		// 把所有的channel都丢到workCh中
 		for _, i := range util.UniqRands(num, len(channels)) {
 			workCh <- channels[i]
 		}
-
+		// 如果从 responseCh 中有回复，则dirty++
 		numDirty := 0
 		for i := 0; i < num; i++ {
 			if <-responseCh {
@@ -693,11 +710,13 @@ func (n *NSQD) queueScanLoop() {
 			}
 		}
 
+		// 如果dirtyNum 的比例过高，则goto loop
 		if float64(numDirty)/float64(num) > n.getOpts().QueueScanDirtyPercent {
 			goto loop
 		}
 	}
 
+	// 退出
 exit:
 	n.logf(LOG_INFO, "QUEUESCAN: closing")
 	close(closeCh)

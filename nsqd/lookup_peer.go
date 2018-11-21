@@ -41,7 +41,7 @@ func newLookupPeer(addr string, maxBodySize int64, l lg.AppLogFunc, connectCallb
 	return &lookupPeer{
 		logf:            l,
 		addr:            addr,
-		state:           stateDisconnected,
+		state:           stateDisconnected, // 初试状态是Disconnected
 		maxBodySize:     maxBodySize,
 		connectCallback: connectCallback,
 	}
@@ -49,6 +49,7 @@ func newLookupPeer(addr string, maxBodySize int64, l lg.AppLogFunc, connectCallb
 
 // Connect will Dial the specified address, with timeouts
 func (lp *lookupPeer) Connect() error {
+	// 尝试进行连接
 	lp.logf(lg.INFO, "LOOKUP connecting to %s", lp.addr)
 	conn, err := net.DialTimeout("tcp", lp.addr, time.Second)
 	if err != nil {
@@ -77,6 +78,7 @@ func (lp *lookupPeer) Write(data []byte) (int, error) {
 
 // Close implements the io.Closer interface
 func (lp *lookupPeer) Close() error {
+	// 关闭后状态会变为Disconnected
 	lp.state = stateDisconnected
 	if lp.conn != nil {
 		return lp.conn.Close()
@@ -97,6 +99,7 @@ func (lp *lookupPeer) Command(cmd *nsq.Command) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
+		// 连接成功后状态变为connected
 		lp.state = stateConnected
 		_, err = lp.Write(nsq.MagicV1)
 		if err != nil {
@@ -106,6 +109,7 @@ func (lp *lookupPeer) Command(cmd *nsq.Command) ([]byte, error) {
 		if initialState == stateDisconnected {
 			lp.connectCallback(lp)
 		}
+		// 经过这一通操作之后如果还没有连接上，则报错。
 		if lp.state != stateConnected {
 			return nil, fmt.Errorf("lookupPeer connectCallback() failed")
 		}
@@ -113,11 +117,13 @@ func (lp *lookupPeer) Command(cmd *nsq.Command) ([]byte, error) {
 	if cmd == nil {
 		return nil, nil
 	}
+	// 将命令写入lookupd的buf中
 	_, err := cmd.WriteTo(lp)
 	if err != nil {
 		lp.Close()
 		return nil, err
 	}
+	// 在发送过命令之后，会读取一个返回值。
 	resp, err := readResponseBounded(lp, lp.maxBodySize)
 	if err != nil {
 		lp.Close()

@@ -123,6 +123,7 @@ func (t *Topic) GetChannel(channelName string) *Channel {
 func (t *Topic) getOrCreateChannel(channelName string) (*Channel, bool) {
 	channel, ok := t.channelMap[channelName]
 	if !ok {
+		// 删除channel的回调
 		deleteCallback := func(c *Channel) {
 			t.DeleteExistingChannel(c.name)
 		}

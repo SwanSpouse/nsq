@@ -16,6 +16,7 @@ func IsValidChannelName(name string) bool {
 	return isValidName(name)
 }
 
+// 判断名字是否是合法的，长度在1到64个字符
 func isValidName(name string) bool {
 	if len(name) > 64 || len(name) < 1 {
 		return false

@@ -78,6 +78,7 @@ func connectCallback(n *NSQD, hostname string) func(*lookupPeer) {
 func (n *NSQD) lookupLoop() {
 	var lookupPeers []*lookupPeer
 	var lookupAddrs []string
+	// 这个表示是否需要去连接nsqlookupd，而不是是否连接上。
 	connect := true
 
 	hostname, err := os.Hostname()
@@ -89,14 +90,14 @@ func (n *NSQD) lookupLoop() {
 	// for announcements, lookupd determines the host automatically
 	ticker := time.Tick(15 * time.Second)
 	for {
+		// 需要去连接nsqlookupd
 		if connect {
 			for _, host := range n.getOpts().NSQLookupdTCPAddresses {
 				if in(host, lookupAddrs) {
 					continue
 				}
 				n.logf(LOG_INFO, "LOOKUP(%s): adding peer", host)
-				lookupPeer := newLookupPeer(host, n.getOpts().MaxBodySize, n.logf,
-					connectCallback(n, hostname))
+				lookupPeer := newLookupPeer(host, n.getOpts().MaxBodySize, n.logf, connectCallback(n, hostname))
 				lookupPeer.Command(nil) // start the connection
 				lookupPeers = append(lookupPeers, lookupPeer)
 				lookupAddrs = append(lookupAddrs, host)
@@ -108,9 +109,11 @@ func (n *NSQD) lookupLoop() {
 		select {
 		case <-ticker:
 			// send a heartbeat and read a response (read detects closed conns)
+			// 向所有的nsqlookupd发送心跳
 			for _, lookupPeer := range lookupPeers {
 				n.logf(LOG_DEBUG, "LOOKUPD(%s): sending heartbeat", lookupPeer)
 				cmd := nsq.Ping()
+				// 向nsqlookupd发送一个ping命令，但是没有关ping的返回值
 				_, err := lookupPeer.Command(cmd)
 				if err != nil {
 					n.logf(LOG_ERROR, "LOOKUPD(%s): %s - %s", lookupPeer, cmd, err)
@@ -172,6 +175,7 @@ exit:
 	n.logf(LOG_INFO, "LOOKUP: closing")
 }
 
+// 简单粗暴
 func in(s string, lst []string) bool {
 	for _, v := range lst {
 		if s == v {
