@@ -111,12 +111,25 @@ func RespondV1(w http.ResponseWriter, code int, data interface{}) {
 // 一个请求过来之后会依次经过f, ds...
 func Decorate(f APIHandler, ds ...Decorator) httprouter.Handle {
 	decorated := f
-	// 在执行的时候会首先执行最后一个decorate ?
+	// 在执行的时候会先执行f 然后依次执行每个ds？
+	// 这就相当于给f 外面套了一层一层的壳子。然后在最终执行的时候是需要从里向外执行的
 	for _, decorate := range ds {
 		decorated = decorate(decorated)
 	}
 	return func(w http.ResponseWriter, req *http.Request, ps httprouter.Params) {
 		decorated(w, req, ps)
+	}
+}
+
+func V12(f APIHandler) APIHandler {
+	return func(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+		data, err := f(w, req, ps)
+		if err != nil {
+			RespondV1(w, err.(Err).Code, err)
+			return nil, nil
+		}
+		RespondV1(w, 200, data)
+		return nil, nil
 	}
 }
 
