@@ -122,7 +122,7 @@ func (n *NSQD) lookupLoop() {
 		case val := <-n.notifyChan:
 			var cmd *nsq.Command
 			var branch string
-
+			// notifyChan中收到了关于channel 和 topic 的消息，根据收到的消息，然后创建相应的CMD发送给nsqlookupd
 			switch val.(type) {
 			case *Channel:
 				// notify all nsqlookupds that a new channel exists, or that it's removed
@@ -144,6 +144,7 @@ func (n *NSQD) lookupLoop() {
 				}
 			}
 
+			// 这些消息都是发出去之后不管返回值的。
 			for _, lookupPeer := range lookupPeers {
 				n.logf(LOG_INFO, "LOOKUPD(%s): %s %s", lookupPeer, branch, cmd)
 				_, err := lookupPeer.Command(cmd)
@@ -152,6 +153,7 @@ func (n *NSQD) lookupLoop() {
 				}
 			}
 		case <-n.optsNotificationChan:
+			// 在这里对连接的nsqlooup进行变更
 			var tmpPeers []*lookupPeer
 			var tmpAddrs []string
 			for _, lp := range lookupPeers {

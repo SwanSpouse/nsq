@@ -276,7 +276,9 @@ func (n *NSQD) Main() error {
 
 	// 起了三个goroutine来分别处理
 	n.waitGroup.Wrap(n.queueScanLoop)
+	// 和nsqlookupd交互的goroutine
 	n.waitGroup.Wrap(n.lookupLoop)
+	// 向statsd写入统计信息的goroutine
 	if n.getOpts().StatsdAddress != "" {
 		n.waitGroup.Wrap(n.statsdLoop)
 	}
