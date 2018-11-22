@@ -299,6 +299,7 @@ func (c *Channel) PutMessage(m *Message) error {
 	if c.Exiting() {
 		return errors.New("exiting")
 	}
+	//
 	err := c.put(m)
 	if err != nil {
 		return err
