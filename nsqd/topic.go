@@ -493,6 +493,7 @@ func (t *Topic) IsPaused() bool {
 	return atomic.LoadInt32(&t.paused) == 1
 }
 
+// 生成MessageID
 func (t *Topic) GenerateID() MessageID {
 retry:
 	id, err := t.idFactory.NewGUID()

@@ -77,6 +77,7 @@ func (a *State) IsExpired() bool {
 	return false
 }
 
+// 这个是任意一个authd认证通过，就算认证成功了
 func QueryAnyAuthd(authd []string, remoteIP string, tlsEnabled bool, commonName string, authSecret string,
 	connectTimeout time.Duration, requestTimeout time.Duration) (*State, error) {
 	start := rand.Int()
@@ -105,6 +106,7 @@ func QueryAuthd(authd string, remoteIP string, tlsEnabled bool, commonName strin
 	v.Set("secret", authSecret)
 	v.Set("common_name", commonName)
 
+	// 来这里进行鉴权
 	endpoint := fmt.Sprintf("http://%s/auth?%s", authd, v.Encode())
 
 	var authState State
@@ -122,7 +124,7 @@ func QueryAuthd(authd string, remoteIP string, tlsEnabled bool, commonName strin
 				return nil, fmt.Errorf("unknown permission %s", p)
 			}
 		}
-
+		// 依次对Topic以及Channel的权限进行校验
 		if _, err := regexp.Compile(auth.Topic); err != nil {
 			return nil, fmt.Errorf("unable to compile topic %q %s", auth.Topic, err)
 		}
