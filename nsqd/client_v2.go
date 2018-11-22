@@ -309,6 +309,7 @@ func (p *prettyConnectionState) GetVersion() string {
 	}
 }
 
+// 客户端是否准备好接收message
 func (c *clientV2) IsReadyForMessages() bool {
 	if c.Channel.IsPaused() {
 		return false

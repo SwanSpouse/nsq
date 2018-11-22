@@ -91,6 +91,7 @@ func NewOptions() *Options {
 
 	h := md5.New()
 	io.WriteString(h, hostname)
+	// 默认的ID是随机生成，然后也可以自己指定。
 	defaultID := int64(crc32.ChecksumIEEE(h.Sum(nil)) % 1024)
 
 	return &Options{
