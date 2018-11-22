@@ -95,7 +95,7 @@ type clientV2 struct {
 
 	IdentifyEventChan chan identifyEvent
 	// Client 订阅的channel
-	SubEventChan      chan *Channel
+	SubEventChan chan *Channel
 
 	TLS     int32
 	Snappy  int32
