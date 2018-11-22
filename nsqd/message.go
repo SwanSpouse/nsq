@@ -26,7 +26,7 @@ type Message struct {
 	clientID   int64
 	pri        int64
 	index      int
-	deferred   time.Duration
+	deferred   time.Duration // 发送消息的延迟
 }
 
 func NewMessage(id MessageID, body []byte) *Message {

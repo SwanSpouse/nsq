@@ -292,36 +292,44 @@ func (c *Channel) IsPaused() bool {
 func (c *Channel) PutMessage(m *Message) error {
 	c.RLock()
 	defer c.RUnlock()
+	// 如果已经退出了，则不发送
 	if c.Exiting() {
 		return errors.New("exiting")
 	}
+	//
 	err := c.put(m)
 	if err != nil {
 		return err
 	}
-	atomic.AddUint64(&c.messageCount, 1)
+	atomic.AddUint64(&c.messageCount, 1) // 把channel发送的消息数+1
 	return nil
 }
 
+// 发送消息
+// The default case in a select is run if no other case is ready.
 func (c *Channel) put(m *Message) error {
 	select {
 	case c.memoryMsgChan <- m:
 	default:
+		// 如果发送到memoryMsgChan的消息阻塞了，会到这里。
 		b := bufferPoolGet()
+		// 将message 持久化
 		err := writeMessageToBackend(b, m, c.backend)
 		bufferPoolPut(b)
 		c.ctx.nsqd.SetHealth(err)
 		if err != nil {
-			c.ctx.nsqd.logf(LOG_ERROR, "CHANNEL(%s): failed to write message to backend - %s",
-				c.name, err)
+			c.ctx.nsqd.logf(LOG_ERROR, "CHANNEL(%s): failed to write message to backend - %s", c.name, err)
 			return err
 		}
 	}
 	return nil
 }
 
+// 发送延迟消息
 func (c *Channel) PutMessageDeferred(msg *Message, timeout time.Duration) {
+	// 首先计数
 	atomic.AddUint64(&c.messageCount, 1)
+	// 塞到优先级队列中去
 	c.StartDeferredTimeout(msg, timeout)
 }
 
@@ -447,6 +455,7 @@ func (c *Channel) StartDeferredTimeout(msg *Message, timeout time.Duration) erro
 	if err != nil {
 		return err
 	}
+	// 入队
 	c.addToDeferredPQ(item)
 	return nil
 }
@@ -498,13 +507,16 @@ func (c *Channel) removeFromInFlightPQ(msg *Message) {
 	c.inFlightMutex.Unlock()
 }
 
+// 将item塞入到优先级队列中，key 是发送时间nano second， value是message
 func (c *Channel) pushDeferredMessage(item *pqueue.Item) error {
 	c.deferredMutex.Lock()
 	// TODO: these map lookups are costly
 	id := item.Value.(*Message).ID
+	// Key是messageID，Value是message
 	_, ok := c.deferredMessages[id]
 	if ok {
 		c.deferredMutex.Unlock()
+		// 如果消息已经存在了， 那么就先不管了
 		return errors.New("ID already deferred")
 	}
 	c.deferredMessages[id] = item

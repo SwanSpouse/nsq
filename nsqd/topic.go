@@ -251,6 +251,7 @@ func (t *Topic) messagePump() {
 	var backendChan <-chan []byte
 
 	// do not pass messages before Start(), but avoid blocking Pause() or GetChannel()
+	// 在start执行之前避免阻塞在Pause()或者GetChanel()上，所以一直卡在这里，知道start执行。
 	for {
 		select {
 		case <-t.channelUpdateChan:
@@ -264,12 +265,15 @@ func (t *Topic) messagePump() {
 		break
 	}
 	t.RLock()
+	// 获取主题下的所有channel
 	for _, c := range t.channelMap {
 		chans = append(chans, c)
 	}
 	t.RUnlock()
 	if len(chans) > 0 && !t.IsPaused() {
+		// 内存消息Chan
 		memoryMsgChan = t.memoryMsgChan
+		// TODO @lmj 磁盘？
 		backendChan = t.backend.ReadChan()
 	}
 
@@ -278,14 +282,18 @@ func (t *Topic) messagePump() {
 		select {
 		case msg = <-memoryMsgChan:
 		case buf = <-backendChan:
+			// 如果从backendChan里面获取的消息，需要首先进行decode
 			msg, err = decodeMessage(buf)
 			if err != nil {
 				t.ctx.nsqd.logf(LOG_ERROR, "failed to decode message - %s", err)
 				continue
 			}
+			// channel创建或者更新
 		case <-t.channelUpdateChan:
+			// 清空chans
 			chans = chans[:0]
 			t.RLock()
+			// 重新获取一遍chans
 			for _, c := range t.channelMap {
 				chans = append(chans, c)
 			}
@@ -298,6 +306,7 @@ func (t *Topic) messagePump() {
 				backendChan = t.backend.ReadChan()
 			}
 			continue
+			// channel被暂停
 		case <-t.pauseChan:
 			if len(chans) == 0 || t.IsPaused() {
 				memoryMsgChan = nil
@@ -322,15 +331,15 @@ func (t *Topic) messagePump() {
 				chanMsg.Timestamp = msg.Timestamp
 				chanMsg.deferred = msg.deferred
 			}
+			// 如果是延迟发送
 			if chanMsg.deferred != 0 {
 				channel.PutMessageDeferred(chanMsg, chanMsg.deferred)
 				continue
 			}
+			// 如果是立即发送。把message塞到QUEUE里面
 			err := channel.PutMessage(chanMsg)
 			if err != nil {
-				t.ctx.nsqd.logf(LOG_ERROR,
-					"TOPIC(%s) ERROR: failed to put msg(%s) to channel(%s) - %s",
-					t.name, msg.ID, channel.name, err)
+				t.ctx.nsqd.logf(LOG_ERROR, "TOPIC(%s) ERROR: failed to put msg(%s) to channel(%s) - %s", t.name, msg.ID, channel.name, err)
 			}
 		}
 	}
