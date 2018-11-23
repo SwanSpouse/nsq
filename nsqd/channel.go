@@ -309,6 +309,7 @@ func (c *Channel) PutMessage(m *Message) error {
 // The default case in a select is run if no other case is ready.
 func (c *Channel) put(m *Message) error {
 	select {
+	// 优先塞到channel的memoryMsgChan 中去
 	case c.memoryMsgChan <- m:
 	default:
 		// 如果发送到memoryMsgChan的消息阻塞了，会到这里。

@@ -94,6 +94,7 @@ type clientV2 struct {
 	SampleRate int32
 
 	IdentifyEventChan chan identifyEvent
+	// Client 订阅的channel
 	SubEventChan      chan *Channel
 
 	TLS     int32

@@ -48,10 +48,12 @@ func NewGUIDFactory(nodeID int64) *guidFactory {
 	}
 }
 
+// 生成全局ID
 func (f *guidFactory) NewGUID() (guid, error) {
 	f.Lock()
 
 	// divide by 1048576, giving pseudo-milliseconds
+	// 根据时间来生成GUID
 	ts := time.Now().UnixNano() >> 20
 
 	if ts < f.lastTimestamp {

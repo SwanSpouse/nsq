@@ -22,9 +22,9 @@ type Message struct {
 	Attempts  uint16
 
 	// for in-flight handling
-	deliveryTS time.Time
+	deliveryTS time.Time // 发送操作时间
 	clientID   int64
-	pri        int64
+	pri        int64 // 应该发送消息的时间
 	index      int
 	deferred   time.Duration // 发送消息的延迟
 }

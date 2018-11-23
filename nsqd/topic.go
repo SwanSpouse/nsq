@@ -188,6 +188,7 @@ func (t *Topic) PutMessage(m *Message) error {
 	if err != nil {
 		return err
 	}
+	// 写入的计数，
 	atomic.AddUint64(&t.messageCount, 1)
 	atomic.AddUint64(&t.messageBytes, uint64(len(m.Body)))
 	return nil
@@ -197,6 +198,7 @@ func (t *Topic) PutMessage(m *Message) error {
 func (t *Topic) PutMessages(msgs []*Message) error {
 	t.RLock()
 	defer t.RUnlock()
+	// 这里是判断当前Topic是否已经退出了
 	if atomic.LoadInt32(&t.exitFlag) == 1 {
 		return errors.New("exiting")
 	}
@@ -212,12 +214,12 @@ func (t *Topic) PutMessages(msgs []*Message) error {
 		}
 		messageTotalBytes += len(m.Body)
 	}
-
+	// TODO @lmj Q 这里的计数逻辑是不是有问题啊。有可能上面put成功进去2条之后失败了，这里就没有把这两条记录上。
 	atomic.AddUint64(&t.messageBytes, uint64(messageTotalBytes))
-	atomic.AddUint64(&t.messageCount, uint64(len(msgs)))
 	return nil
 }
 
+// 将消息写入到内存或者backend里面
 func (t *Topic) put(m *Message) error {
 	select {
 	case t.memoryMsgChan <- m:
@@ -280,6 +282,7 @@ func (t *Topic) messagePump() {
 	// main message loop
 	for {
 		select {
+		// 从Topic 的memoryMsgChan中消费msg，然后发送到所有的channel中。
 		case msg = <-memoryMsgChan:
 		case buf = <-backendChan:
 			// 如果从backendChan里面获取的消息，需要首先进行decode
@@ -320,6 +323,7 @@ func (t *Topic) messagePump() {
 			goto exit
 		}
 
+		// Topic 启动之后，会不断把收到的消息发送到下面各个Channel中去。
 		for i, channel := range chans {
 			chanMsg := msg
 			// copy the message because each channel
@@ -497,6 +501,7 @@ func (t *Topic) IsPaused() bool {
 func (t *Topic) GenerateID() MessageID {
 retry:
 	id, err := t.idFactory.NewGUID()
+	// 如果第一次生成失败，则会sleep 1毫秒然后重试。
 	if err != nil {
 		time.Sleep(time.Millisecond)
 		goto retry
