@@ -95,7 +95,11 @@ type clientV2 struct {
 
 	IdentifyEventChan chan identifyEvent
 	// Client 订阅的channel
+<<<<<<< HEAD
 	SubEventChan chan *Channel
+=======
+	SubEventChan      chan *Channel
+>>>>>>> NSQD topic receive message and channel send message
 
 	TLS     int32
 	Snappy  int32

@@ -25,10 +25,14 @@ type Message struct {
 	deliveryTS time.Time // 发送操作时间
 	clientID   int64
 <<<<<<< HEAD
+<<<<<<< HEAD
 	pri        int64         // 应该发送消息的时间
 	index      int           // 消息在优先级队列中的位置，在push到优先级队里的时候会进行赋值
 =======
 	pri        int64
+=======
+	pri        int64 // 应该发送消息的时间
+>>>>>>> NSQD topic receive message and channel send message
 	index      int
 >>>>>>> NSQD
 	deferred   time.Duration // 发送消息的延迟
