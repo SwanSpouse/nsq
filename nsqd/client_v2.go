@@ -55,7 +55,7 @@ type clientV2 struct {
 	FinishCount   uint64
 	RequeueCount  uint64
 
-	pubCounts map[string]uint64
+	pubCounts map[string]uint64 // 发布消息计数
 
 	writeLock sync.RWMutex
 	metaLock  sync.RWMutex

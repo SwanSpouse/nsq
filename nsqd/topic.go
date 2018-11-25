@@ -188,7 +188,7 @@ func (t *Topic) PutMessage(m *Message) error {
 	if err != nil {
 		return err
 	}
-	// 写入的计数，
+	// topic 写入消息计数，
 	atomic.AddUint64(&t.messageCount, 1)
 	atomic.AddUint64(&t.messageBytes, uint64(len(m.Body)))
 	return nil
@@ -220,10 +220,13 @@ func (t *Topic) PutMessages(msgs []*Message) error {
 }
 
 // 将消息写入到内存或者backend里面
+// 这里有个问题，消息有可能被写入memoryMsgChan或者磁盘中，那是怎么保证消息是有序的呢？
 func (t *Topic) put(m *Message) error {
 	select {
+	// 在这里把message写入到memoryMsgChan当中。
 	case t.memoryMsgChan <- m:
 	default:
+		// 在这里把消息写到backend中，也就是diskqueue中。
 		b := bufferPoolGet()
 		err := writeMessageToBackend(b, m, t.backend)
 		bufferPoolPut(b)
@@ -275,7 +278,6 @@ func (t *Topic) messagePump() {
 	if len(chans) > 0 && !t.IsPaused() {
 		// 内存消息Chan
 		memoryMsgChan = t.memoryMsgChan
-		// TODO @lmj 磁盘？
 		backendChan = t.backend.ReadChan()
 	}
 
@@ -410,6 +412,7 @@ func (t *Topic) exit(deleted bool) error {
 }
 
 func (t *Topic) Empty() error {
+	// 先清空所有messageMsgChan中的消息，然后再清空磁盘上的消息。
 	for {
 		select {
 		case <-t.memoryMsgChan:
@@ -422,6 +425,7 @@ finish:
 	return t.backend.Empty()
 }
 
+// flush操作是把内存中的msg写到磁盘上。
 func (t *Topic) flush() error {
 	var msgBuf bytes.Buffer
 
