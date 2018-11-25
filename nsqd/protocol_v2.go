@@ -311,6 +311,7 @@ func (p *protocolV2) messagePump(client *clientV2, startedChan chan bool) {
 			}
 			msg.Attempts++
 
+			// 把message放入到in-flight队列中，等着客户端确认收到消息，再把消息移除
 			subChannel.StartInFlightTimeout(msg, client.ID, msgTimeout)
 			client.SendingMessage()
 			err = p.SendMessage(client, msg)
@@ -324,6 +325,7 @@ func (p *protocolV2) messagePump(client *clientV2, startedChan chan bool) {
 			}
 			msg.Attempts++
 
+			// 把message放入到in-flight队列中，等着客户端确认收到消息，再把消息移除
 			subChannel.StartInFlightTimeout(msg, client.ID, msgTimeout)
 			client.SendingMessage()
 			err = p.SendMessage(client, msg)
@@ -673,6 +675,7 @@ func (p *protocolV2) RDY(client *clientV2, params [][]byte) ([]byte, error) {
 	return nil, nil
 }
 
+// 收到消息，相当于消息的ACK
 func (p *protocolV2) FIN(client *clientV2, params [][]byte) ([]byte, error) {
 	state := atomic.LoadInt32(&client.State)
 	if state != stateSubscribed && state != stateClosing {

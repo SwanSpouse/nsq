@@ -62,9 +62,11 @@ type Channel struct {
 	e2eProcessingLatencyStream *quantile.Quantile
 
 	// TODO: these can be DRYd up
+	// 延迟消息
 	deferredMessages map[MessageID]*pqueue.Item
 	deferredPQ       pqueue.PriorityQueue
 	deferredMutex    sync.Mutex
+	// 处理正在投递，但是还没有发送成功的消息
 	inFlightMessages map[MessageID]*Message
 	inFlightPQ       inFlightPqueue
 	inFlightMutex    sync.Mutex
@@ -483,6 +485,7 @@ func (c *Channel) popInFlightMessage(clientID int64, id MessageID) (*Message, er
 		c.inFlightMutex.Unlock()
 		return nil, errors.New("ID not in flight")
 	}
+	// 这条消息不属于当前客户端
 	if msg.clientID != clientID {
 		c.inFlightMutex.Unlock()
 		return nil, errors.New("client does not own message")
@@ -556,6 +559,7 @@ func (c *Channel) processDeferredQueue(t int64) bool {
 	dirty := false
 	for {
 		c.deferredMutex.Lock()
+		// 不断取出达到发送时间的消息然后塞到 memoryMsgChan或者 diskqueue 中。
 		item, _ := c.deferredPQ.PeekAndShift(t)
 		c.deferredMutex.Unlock()
 

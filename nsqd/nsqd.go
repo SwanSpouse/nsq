@@ -591,6 +591,7 @@ func (n *NSQD) Notify(v interface{}) {
 }
 
 // channels returns a flat slice of all channels in all topics
+// 返回NSQD 下面的所有channel，所有Topic 的所有 channel
 func (n *NSQD) channels() []*Channel {
 	var channels []*Channel
 	n.RLock()
@@ -626,6 +627,7 @@ func (n *NSQD) resizePool(num int, workCh chan *Channel, responseCh chan bool, c
 		} else {
 			// expand
 			n.waitGroup.Wrap(func() {
+				// 启动N个线程来处理in-flight 和 deferred message的事情
 				n.queueScanWorker(workCh, responseCh, closeCh)
 			})
 			n.poolSize++
@@ -639,11 +641,14 @@ func (n *NSQD) queueScanWorker(workCh chan *Channel, responseCh chan bool, close
 	for {
 		select {
 		case c := <-workCh:
+			// 处理相应channel的in-flight queue 和 deferred queue
 			now := time.Now().UnixNano()
 			dirty := false
+			// 这里都是啥消息呢？
 			if c.processInFlightQueue(now) {
 				dirty = true
 			}
+			// 处理延迟消息
 			if c.processDeferredQueue(now) {
 				dirty = true
 			}
@@ -675,7 +680,9 @@ func (n *NSQD) queueScanLoop() {
 	workTicker := time.NewTicker(n.getOpts().QueueScanInterval)
 	refreshTicker := time.NewTicker(n.getOpts().QueueScanRefreshInterval)
 
+	// 获取一个NSQD 所有topic下面的所有channel
 	channels := n.channels()
+	// 在这里处理workCh 的消息
 	n.resizePool(len(channels), workCh, responseCh, closeCh)
 
 	// 循环
@@ -688,6 +695,7 @@ func (n *NSQD) queueScanLoop() {
 			}
 		case <-refreshTicker.C:
 			channels = n.channels()
+			// 在这里处理workCh 的消息
 			n.resizePool(len(channels), workCh, responseCh, closeCh)
 			continue
 		case <-n.exitChan:
@@ -702,10 +710,12 @@ func (n *NSQD) queueScanLoop() {
 
 	loop:
 		// 把所有的channel都丢到workCh中
+		// 这个是把 channel的顺序来随机一下 shuffle channels
 		for _, i := range util.UniqRands(num, len(channels)) {
 			workCh <- channels[i]
 		}
 		// 如果从 responseCh 中有回复，则dirty++
+		// 这里应该是阻塞式的？
 		numDirty := 0
 		for i := 0; i < num; i++ {
 			if <-responseCh {
