@@ -226,7 +226,9 @@ func (t *Topic) put(m *Message) error {
 	select {
 	// 在这里把message写入到memoryMsgChan当中。
 	case t.memoryMsgChan <- m:
+		t.ctx.nsqd.logf(LOG_INFO, MingjiDebugPrefix+"current message was sent to memoryMsgChan. %s", m.Body)
 	default:
+		t.ctx.nsqd.logf(LOG_INFO, MingjiDebugPrefix+"current message was sent to backendMsgChan. %s", m.Body)
 		// 在这里把消息写到backend中，也就是diskqueue中。
 		b := bufferPoolGet()
 		err := writeMessageToBackend(b, m, t.backend)
@@ -285,9 +287,11 @@ func (t *Topic) messagePump() {
 		select {
 		// 从Topic 的memoryMsgChan中消费msg，然后发送到所有的channel中。
 		case msg = <-memoryMsgChan:
+			t.ctx.nsqd.logf(LOG_INFO, MingjiDebugPrefix+" receive message from topic memoryMsgChan. %s", msg.Body)
 		case buf = <-backendChan:
 			// 如果从backendChan里面获取的消息，需要首先进行decode
 			msg, err = decodeMessage(buf)
+			t.ctx.nsqd.logf(LOG_INFO, MingjiDebugPrefix+" receive message from topic backendChan. %s", msg.Body)
 			if err != nil {
 				t.ctx.nsqd.logf(LOG_ERROR, "failed to decode message - %s", err)
 				continue

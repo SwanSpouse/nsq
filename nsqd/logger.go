@@ -14,6 +14,10 @@ const (
 	LOG_FATAL = lg.FATAL
 )
 
+const (
+	MingjiDebugPrefix = "MINGJI DEBUG ===========> "
+)
+
 func (n *NSQD) logf(level lg.LogLevel, f string, args ...interface{}) {
 	opts := n.getOpts()
 	lg.Logf(opts.Logger, opts.LogLevel, level, f, args...)
