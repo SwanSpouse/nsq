@@ -19,21 +19,21 @@ type Topic struct {
 	messageCount uint64
 	messageBytes uint64
 
-	sync.RWMutex
+	sync.RWMutex // 操作Topic下资源的锁
 
-	name              string
-	channelMap        map[string]*Channel
-	backend           BackendQueue
-	memoryMsgChan     chan *Message
-	startChan         chan int
-	exitChan          chan int
+	name              string              // topic name
+	channelMap        map[string]*Channel // 当前topic下的所有channel；channel name 和 channel Map
+	backend           BackendQueue        // 这个是直接写磁盘的 diskqueue
+	memoryMsgChan     chan *Message       // 内存消息
+	startChan         chan int            // Topic 开始服务的标志。
+	exitChan          chan int            // Topic 退出的标志
 	channelUpdateChan chan int
 	waitGroup         util.WaitGroupWrapper
 	exitFlag          int32
 	idFactory         *guidFactory
 
 	ephemeral      bool
-	deleteCallback func(*Topic)
+	deleteCallback func(*Topic) // Topic 被删除所应该执行的callback
 	deleter        sync.Once
 
 	paused    int32
@@ -220,7 +220,8 @@ func (t *Topic) PutMessages(msgs []*Message) error {
 }
 
 // 将消息写入到内存或者backend里面
-// 这里有个问题，消息有可能被写入memoryMsgChan或者磁盘中，那是怎么保证消息是有序的呢？
+// 这里有个问题，消息有可能被写入memoryMsgChan或者磁盘中，那是怎么保证消息是有序的呢？NSQ是不保证消息有序的。
+// 这里有个问题，内存中的消息，是什么时候同步到磁盘中的呢？
 func (t *Topic) put(m *Message) error {
 	select {
 	// 在这里把message写入到memoryMsgChan当中。
@@ -232,9 +233,7 @@ func (t *Topic) put(m *Message) error {
 		bufferPoolPut(b)
 		t.ctx.nsqd.SetHealth(err)
 		if err != nil {
-			t.ctx.nsqd.logf(LOG_ERROR,
-				"TOPIC(%s) ERROR: failed to write message to backend - %s",
-				t.name, err)
+			t.ctx.nsqd.logf(LOG_ERROR, "TOPIC(%s) ERROR: failed to write message to backend - %s", t.name, err)
 			return err
 		}
 	}
@@ -386,6 +385,7 @@ func (t *Topic) exit(deleted bool) error {
 
 	if deleted {
 		t.Lock()
+		// 删除所有的channel
 		for _, channel := range t.channelMap {
 			delete(t.channelMap, channel.name)
 			channel.Delete()
@@ -393,6 +393,7 @@ func (t *Topic) exit(deleted bool) error {
 		t.Unlock()
 
 		// empty the queue (deletes the backend files, too)
+		// 把内存和磁盘中的消息全部都清空。
 		t.Empty()
 		return t.backend.Delete()
 	}
@@ -407,6 +408,7 @@ func (t *Topic) exit(deleted bool) error {
 	}
 
 	// write anything leftover to disk
+	// 把所有内存中的数据写入到磁盘中。
 	t.flush()
 	return t.backend.Close()
 }
@@ -415,6 +417,7 @@ func (t *Topic) Empty() error {
 	// 先清空所有messageMsgChan中的消息，然后再清空磁盘上的消息。
 	for {
 		select {
+		// 因为是Empty嘛，所有把内存中的所有消息丢掉。
 		case <-t.memoryMsgChan:
 		default:
 			goto finish
@@ -426,15 +429,13 @@ finish:
 }
 
 // flush操作是把内存中的msg写到磁盘上。
+// TODO @lmj 为啥只有在exit的时候才把消息写到磁盘中。那么在内存中的消息就一直驻留在内存中不变了吗？
 func (t *Topic) flush() error {
 	var msgBuf bytes.Buffer
 
 	if len(t.memoryMsgChan) > 0 {
-		t.ctx.nsqd.logf(LOG_INFO,
-			"TOPIC(%s): flushing %d memory messages to backend",
-			t.name, len(t.memoryMsgChan))
+		t.ctx.nsqd.logf(LOG_INFO, "TOPIC(%s): flushing %d memory messages to backend", t.name, len(t.memoryMsgChan))
 	}
-
 	for {
 		select {
 		case msg := <-t.memoryMsgChan:
