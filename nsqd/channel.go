@@ -313,12 +313,14 @@ func (c *Channel) PutMessage(m *Message) error {
 func (c *Channel) put(m *Message) error {
 	select {
 	// 优先塞到channel的memoryMsgChan 中去
-	// TODO @lmj 这里有一个问题啊，这里是咋保证message的顺序的啊。感觉这样内存和磁盘里面的消息就乱序了啊。
 	case c.memoryMsgChan <- m:
 		c.ctx.nsqd.logf(LOG_INFO, MingjiDebugPrefix+"channel put message to memoryMsgChan. %s", m.Body)
 	default:
 		// 如果发送到memoryMsgChan的消息阻塞了，会到这里。
 		c.ctx.nsqd.logf(LOG_INFO, MingjiDebugPrefix+"channel put message to backendChan. %s", m.Body)
+	default:
+		// 如果发送到memoryMsgChan的消息阻塞了，会到这里。
+		c.ctx.nsqd.logf(LOG_INFO, MingjiDebugPrefix+"put message to channel backendChan. %s", m.Body)
 		b := bufferPoolGet()
 		// 将message 持久化
 		err := writeMessageToBackend(b, m, c.backend)
