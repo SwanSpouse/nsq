@@ -73,9 +73,7 @@ type Channel struct {
 }
 
 // NewChannel creates a new instance of the Channel type and returns a pointer
-func NewChannel(topicName string, channelName string, ctx *context,
-	deleteCallback func(*Channel)) *Channel {
-
+func NewChannel(topicName string, channelName string, ctx *context, deleteCallback func(*Channel)) *Channel {
 	c := &Channel{
 		topicName:      topicName,
 		name:           channelName,
@@ -95,6 +93,7 @@ func NewChannel(topicName string, channelName string, ctx *context,
 		)
 	}
 
+	// 创建延迟消息chan 和 处理中消息chan
 	c.initPQ()
 
 	if strings.HasSuffix(channelName, "#ephemeral") {
@@ -117,6 +116,7 @@ func NewChannel(topicName string, channelName string, ctx *context,
 			ctx.nsqd.getOpts().SyncTimeout,
 			dqLogf,
 		)
+		c.ctx.nsqd.logf(LOG_INFO, "create a new diskqueue when channel created. current depth:%d", c.backend.Depth())
 	}
 
 	c.ctx.nsqd.Notify(c)
