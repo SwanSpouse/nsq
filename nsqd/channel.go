@@ -95,7 +95,7 @@ func NewChannel(topicName string, channelName string, ctx *context, deleteCallba
 
 	// 创建延迟消息chan 和 处理中消息chan
 	c.initPQ()
-
+	// 如果是一个ephemeral:朝生暮死的channel，不会创建真正的backend实例，也就是说它只能消费内存中的数据。
 	if strings.HasSuffix(channelName, "#ephemeral") {
 		c.ephemeral = true
 		c.backend = newDummyBackendQueue()
@@ -106,6 +106,7 @@ func NewChannel(topicName string, channelName string, ctx *context, deleteCallba
 		}
 		// backend names, for uniqueness, automatically include the topic...
 		backendName := getBackendName(topicName, channelName)
+		// 实例化属于这个channel自己的diskqueue
 		c.backend = diskqueue.New(
 			backendName,
 			ctx.nsqd.getOpts().DataPath,
@@ -118,7 +119,7 @@ func NewChannel(topicName string, channelName string, ctx *context, deleteCallba
 		)
 		c.ctx.nsqd.logf(LOG_INFO, "create a new diskqueue when channel created. current depth:%d", c.backend.Depth())
 	}
-
+	// 这个是和nsqlookupd来进行交互
 	c.ctx.nsqd.Notify(c)
 
 	return c
