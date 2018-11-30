@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/nsqio/nsq/internal/test"
+	"sync/atomic"
 )
 
 func TestGetTopic(t *testing.T) {
@@ -112,6 +113,35 @@ func TestHealth(t *testing.T) {
 	body, _ = ioutil.ReadAll(resp.Body)
 	resp.Body.Close()
 	test.Equal(t, "OK", string(body))
+}
+
+func TestTopicPutMessagesCount(t *testing.T) {
+	opts := NewOptions()
+	opts.Logger = test.NewTestLogger(t)
+	opts.MemQueueSize = 0
+
+	_, _, nsqd := mustStartNSQD(opts)
+	defer os.RemoveAll(opts.DataPath)
+	defer nsqd.Exit()
+
+	topic := nsqd.GetTopic("test")
+	msg := NewMessage(topic.GenerateID(), make([]byte, 100))
+	err := topic.PutMessage(msg)
+	test.Nil(t, err)
+	test.Equal(t, atomic.LoadUint64(&topic.messageCount), uint64(1))
+
+	messages := make([]*Message, 0, 10)
+	// create 5 tiny messages
+	for i := 0; i < 5; i++ {
+		messages = append(messages, NewMessage(topic.GenerateID(), make([]byte, 100)))
+	}
+	// create 5 huge messages
+	for i := 0; i < 5; i++ {
+		messages = append(messages, NewMessage(topic.GenerateID(), make([]byte, 1024*1024+1)))
+	}
+	err = topic.PutMessages(messages)
+	test.NotNil(t, err)
+	test.Equal(t, atomic.LoadUint64(&topic.messageCount), uint64(2))
 }
 
 func TestDeletes(t *testing.T) {
