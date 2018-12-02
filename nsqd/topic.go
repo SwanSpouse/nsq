@@ -202,10 +202,11 @@ func (t *Topic) PutMessages(msgs []*Message) error {
 	if atomic.LoadInt32(&t.exitFlag) == 1 {
 		return errors.New("exiting")
 	}
-
 	messageTotalBytes := 0
-
+	// 依次写入消息
 	for i, m := range msgs {
+		// 我原以为在put消息的时候会报各种消息过长等等的错误，没想到人家在外面都已经处理完了。
+		// t.put(m)基本不会出错。哎，好不容易改一行代码还改呲了。。。
 		err := t.put(m)
 		if err != nil {
 			atomic.AddUint64(&t.messageCount, uint64(i))

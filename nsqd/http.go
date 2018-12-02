@@ -185,13 +185,14 @@ func (s *httpServer) getTopicFromQuery(req *http.Request) (url.Values, *Topic, e
 func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	// TODO: one day I'd really like to just error on chunked requests
 	// to be able to fail "too big" requests before we even read
-
+	// 首先对请求的大小进行检查
 	if req.ContentLength > s.ctx.nsqd.getOpts().MaxMsgSize {
 		return nil, http_api.Err{413, "MSG_TOO_BIG"}
 	}
 
 	// add 1 so that it's greater than our max when we test for it
 	// (LimitReader returns a "fake" EOF)
+	// 读取消息体
 	readMax := s.ctx.nsqd.getOpts().MaxMsgSize + 1
 	body, err := ioutil.ReadAll(io.LimitReader(req.Body, readMax))
 	if err != nil {
@@ -203,12 +204,12 @@ func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprout
 	if len(body) == 0 {
 		return nil, http_api.Err{400, "MSG_EMPTY"}
 	}
-
+	// 获取TOPIC
 	reqParams, topic, err := s.getTopicFromQuery(req)
 	if err != nil {
 		return nil, err
 	}
-
+	// 延迟消息判断
 	var deferred time.Duration
 	if ds, ok := reqParams["defer"]; ok {
 		var di int64
@@ -221,14 +222,14 @@ func (s *httpServer) doPUB(w http.ResponseWriter, req *http.Request, ps httprout
 			return nil, http_api.Err{400, "INVALID_DEFER"}
 		}
 	}
-
+	// 创建新message
 	msg := NewMessage(topic.GenerateID(), body)
 	msg.deferred = deferred
+	// 将消息写入到Topic的memoryMsgChan或者backendMsgChan
 	err = topic.PutMessage(msg)
 	if err != nil {
 		return nil, http_api.Err{503, "EXITING"}
 	}
-
 	return "OK", nil
 }
 

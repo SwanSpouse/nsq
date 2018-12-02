@@ -55,7 +55,7 @@ type clientV2 struct {
 	FinishCount   uint64
 	RequeueCount  uint64
 
-	pubCounts map[string]uint64 // 发布消息计数
+	pubCounts map[string]uint64 // 各个Topic 下发布消息计数
 
 	writeLock sync.RWMutex
 	metaLock  sync.RWMutex
@@ -95,19 +95,15 @@ type clientV2 struct {
 
 	IdentifyEventChan chan identifyEvent
 	// Client 订阅的channel
-<<<<<<< HEAD
 	SubEventChan chan *Channel
-=======
-	SubEventChan      chan *Channel
->>>>>>> NSQD topic receive message and channel send message
 
 	TLS     int32
 	Snappy  int32
 	Deflate int32
 
 	// re-usable buffer for reading the 4-byte lengths off the wire
-	lenBuf   [4]byte
-	lenSlice []byte
+	lenBuf   [4]byte // 首先读取4个字节的长度
+	lenSlice []byte  // 然后根据长度来读取消息
 
 	AuthSecret string
 	AuthState  *auth.State

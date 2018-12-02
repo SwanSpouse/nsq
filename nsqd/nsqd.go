@@ -67,7 +67,7 @@ type NSQD struct {
 	httpsListener net.Listener
 	tlsConfig     *tls.Config
 
-	poolSize int
+	poolSize int // 当前处理defer queue和priority queue 协程的个数
 
 	notifyChan           chan interface{}
 	optsNotificationChan chan struct{}
@@ -611,21 +611,24 @@ func (n *NSQD) channels() []*Channel {
 // 	1 <= pool <= min(num * 0.25, QueueScanWorkerPoolMax)
 //
 func (n *NSQD) resizePool(num int, workCh chan *Channel, responseCh chan bool, closeCh chan int) {
+	// 打算启动的协程数量
 	idealPoolSize := int(float64(num) * 0.25)
+	// 最少为1个工作线程
 	if idealPoolSize < 1 {
 		idealPoolSize = 1
 	} else if idealPoolSize > n.getOpts().QueueScanWorkerPoolMax {
 		idealPoolSize = n.getOpts().QueueScanWorkerPoolMax
 	}
 	for {
+		// 如果ideaPoolSize和当前的poolSize相等，则保持不变
 		if idealPoolSize == n.poolSize {
 			break
 		} else if idealPoolSize < n.poolSize {
-			// contract
+			// contract 缩容，关闭一个协程。
 			closeCh <- 1
 			n.poolSize--
 		} else {
-			// expand
+			// expand 扩容
 			n.waitGroup.Wrap(func() {
 				// 启动N个线程来处理in-flight 和 deferred message的事情
 				n.queueScanWorker(workCh, responseCh, closeCh)
@@ -637,6 +640,7 @@ func (n *NSQD) resizePool(num int, workCh chan *Channel, responseCh chan bool, c
 
 // queueScanWorker receives work (in the form of a channel) from queueScanLoop
 // and processes the deferred and in-flight queues
+// 启动一个协程来处理
 func (n *NSQD) queueScanWorker(workCh chan *Channel, responseCh chan bool, closeCh chan int) {
 	for {
 		select {
@@ -653,6 +657,7 @@ func (n *NSQD) queueScanWorker(workCh chan *Channel, responseCh chan bool, close
 				dirty = true
 			}
 			responseCh <- dirty
+		// 如果某个协程不幸收到了closeCh的消息，则关闭
 		case <-closeCh:
 			return
 		}
@@ -678,11 +683,12 @@ func (n *NSQD) queueScanLoop() {
 	closeCh := make(chan int)
 
 	workTicker := time.NewTicker(n.getOpts().QueueScanInterval)
+	// 刷新channels和resizePool的间隔
 	refreshTicker := time.NewTicker(n.getOpts().QueueScanRefreshInterval)
 
 	// 获取一个NSQD 所有topic下面的所有channel
 	channels := n.channels()
-	// 在这里处理workCh 的消息
+	// 在这里处理workCh 的消息，会启动 len(channels) * 0.25个工作线程来进行处理这个事情。
 	n.resizePool(len(channels), workCh, responseCh, closeCh)
 
 	// 循环
@@ -690,12 +696,14 @@ func (n *NSQD) queueScanLoop() {
 		select {
 		// 每间隔QueueScanInterval就会触发一次
 		case <-workTicker.C:
+			// 如果没有channels要进行处理的话就continue
 			if len(channels) == 0 {
 				continue
 			}
 		case <-refreshTicker.C:
+			// 在这里重新获取一次channels
 			channels = n.channels()
-			// 在这里处理workCh 的消息
+			// 在根据重新获取的channel的数量重新resizePool 在这里处理workCh 的消息
 			n.resizePool(len(channels), workCh, responseCh, closeCh)
 			continue
 		case <-n.exitChan:
@@ -707,7 +715,6 @@ func (n *NSQD) queueScanLoop() {
 		if num > len(channels) {
 			num = len(channels)
 		}
-
 	loop:
 		// 把所有的channel都丢到workCh中
 		// 这个是把 channel的顺序来随机一下 shuffle channels
@@ -722,7 +729,6 @@ func (n *NSQD) queueScanLoop() {
 				numDirty++
 			}
 		}
-
 		// 如果dirtyNum 的比例过高，则goto loop
 		if float64(numDirty)/float64(num) > n.getOpts().QueueScanDirtyPercent {
 			goto loop

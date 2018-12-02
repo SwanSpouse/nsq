@@ -91,7 +91,6 @@ func NewOptions() *Options {
 
 	h := md5.New()
 	io.WriteString(h, hostname)
-	// 默认的ID是随机生成，然后也可以自己指定。
 	defaultID := int64(crc32.ChecksumIEEE(h.Sum(nil)) % 1024)
 
 	return &Options{
@@ -99,9 +98,9 @@ func NewOptions() *Options {
 		LogPrefix: "[nsqd] ",
 		LogLevel:  lg.INFO,
 
-		TCPAddress:       "0.0.0.0:4150",
-		HTTPAddress:      "0.0.0.0:4151",
-		HTTPSAddress:     "0.0.0.0:4152",
+		TCPAddress:       "0.0.0.0:4150", // Tcp Server默认地址和端口
+		HTTPAddress:      "0.0.0.0:4151", // HTTP Server默认地址和端口
+		HTTPSAddress:     "0.0.0.0:4152", // HTTPS Server默认地址和端口
 		BroadcastAddress: hostname,
 
 		NSQLookupdTCPAddresses: make([]string, 0),
@@ -111,7 +110,7 @@ func NewOptions() *Options {
 		HTTPClientRequestTimeout: 5 * time.Second,
 
 		MemQueueSize:    10000,
-		MaxBytesPerFile: 100 * 1024 * 1024,
+		MaxBytesPerFile: 100 * 1024 * 1024, // 100MB
 		SyncEvery:       2500,
 		SyncTimeout:     2 * time.Second,
 
@@ -123,8 +122,8 @@ func NewOptions() *Options {
 
 		MsgTimeout:    60 * time.Second,
 		MaxMsgTimeout: 15 * time.Minute,
-		MaxMsgSize:    1024 * 1024,
-		MaxBodySize:   5 * 1024 * 1024,
+		MaxMsgSize:    1024 * 1024,     // 1MB
+		MaxBodySize:   5 * 1024 * 1024, // 5MB
 		MaxReqTimeout: 1 * time.Hour,
 		ClientTimeout: 60 * time.Second,
 

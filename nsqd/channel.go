@@ -552,6 +552,7 @@ func (c *Channel) addToDeferredPQ(item *pqueue.Item) {
 	c.deferredMutex.Unlock()
 }
 
+// 处理延迟消息，如果到达发送时间，则入队，进行发送
 func (c *Channel) processDeferredQueue(t int64) bool {
 	c.exitMutex.RLock()
 	defer c.exitMutex.RUnlock()
@@ -566,17 +567,20 @@ func (c *Channel) processDeferredQueue(t int64) bool {
 		// 不断取出达到发送时间的消息然后塞到 memoryMsgChan或者 diskqueue 中。
 		item, _ := c.deferredPQ.PeekAndShift(t)
 		c.deferredMutex.Unlock()
-
+		// 如果没有消息了，则退出
 		if item == nil {
 			goto exit
 		}
+		// 有消息的话首先标记为dirty
 		dirty = true
 
 		msg := item.Value.(*Message)
+		// 把消息从deferred message queue 中弹出去
 		_, err := c.popDeferredMessage(msg.ID)
 		if err != nil {
 			goto exit
 		}
+		// 把消息重新放入到memoryMsgChan或者backendMsgChan中
 		c.put(msg)
 	}
 
@@ -584,6 +588,7 @@ exit:
 	return dirty
 }
 
+// 处理等待ACK的消息，如果超时还未收到则重新入队。
 func (c *Channel) processInFlightQueue(t int64) bool {
 	c.exitMutex.RLock()
 	defer c.exitMutex.RUnlock()
