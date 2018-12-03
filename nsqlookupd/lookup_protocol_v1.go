@@ -190,7 +190,7 @@ func (p *LookupProtocolV1) UNREGISTER(client *ClientV1, reader *bufio.Reader, pa
 	return []byte("OK"), nil
 }
 
-// 进行身份认证
+// 可以理解为登录
 func (p *LookupProtocolV1) IDENTIFY(client *ClientV1, reader *bufio.Reader, params []string) ([]byte, error) {
 	var err error
 	// 判断是否IDENTIFY过
