@@ -12,25 +12,29 @@ import (
 	"github.com/nsqio/nsq/internal/version"
 )
 
+// 连接上的callback
 func connectCallback(n *NSQD, hostname string) func(*lookupPeer) {
 	return func(lp *lookupPeer) {
+		// 以此来进行认证
 		ci := make(map[string]interface{})
 		ci["version"] = version.Binary
 		ci["tcp_port"] = n.RealTCPAddr().Port
 		ci["http_port"] = n.RealHTTPAddr().Port
 		ci["hostname"] = hostname
 		ci["broadcast_address"] = n.getOpts().BroadcastAddress
-
+		// 创建Identify命令
 		cmd, err := nsq.Identify(ci)
 		if err != nil {
 			lp.Close()
 			return
 		}
+		// 向lookupd发送identify命令
 		resp, err := lp.Command(cmd)
 		if err != nil {
 			n.logf(LOG_ERROR, "LOOKUPD(%s): %s - %s", lp, cmd, err)
 			return
 		} else if bytes.Equal(resp, []byte("E_INVALID")) {
+			// 验证未通过
 			n.logf(LOG_INFO, "LOOKUPD(%s): lookupd returned %s", lp, resp)
 			lp.Close()
 			return
@@ -49,13 +53,17 @@ func connectCallback(n *NSQD, hostname string) func(*lookupPeer) {
 		}
 
 		// build all the commands first so we exit the lock(s) as fast as possible
+		// 构建发送给lookupd的命令，和lookup同步topic, channel信息
 		var commands []*nsq.Command
 		n.RLock()
+		// 首先获取NSQD下面的所有的topic
 		for _, topic := range n.topicMap {
 			topic.RLock()
+			// 如果topic下面没有channel，那么直接同步topic就好了。
 			if len(topic.channelMap) == 0 {
 				commands = append(commands, nsq.Register(topic.name, ""))
 			} else {
+				// 如果topic下面有channel，那么需要同步所有的channel信息
 				for _, channel := range topic.channelMap {
 					commands = append(commands, nsq.Register(channel.topicName, channel.name))
 				}
@@ -63,7 +71,7 @@ func connectCallback(n *NSQD, hostname string) func(*lookupPeer) {
 			topic.RUnlock()
 		}
 		n.RUnlock()
-
+		// 依次发送所有的command
 		for _, cmd := range commands {
 			n.logf(LOG_INFO, "LOOKUPD(%s): %s", lp, cmd)
 			_, err := lp.Command(cmd)
@@ -97,16 +105,22 @@ func (n *NSQD) lookupLoop() {
 					continue
 				}
 				n.logf(LOG_INFO, "LOOKUP(%s): adding peer", host)
+				// 创建一个新的loopupPeer
 				lookupPeer := newLookupPeer(host, n.getOpts().MaxBodySize, n.logf, connectCallback(n, hostname))
+				// 发送一个nil command就是为了建立连接
 				lookupPeer.Command(nil) // start the connection
+				// 将已经连接的lookupPeer添加到looupPeers数组中
 				lookupPeers = append(lookupPeers, lookupPeer)
 				lookupAddrs = append(lookupAddrs, host)
 			}
+			// 保存已经连接的looupPeers
 			n.lookupPeers.Store(lookupPeers)
+			// 表示已经连接上，不需要再连接了。
 			connect = false
 		}
 
 		select {
+		// 15秒钟的ticker
 		case <-ticker:
 			// send a heartbeat and read a response (read detects closed conns)
 			// 向所有的nsqlookupd发送心跳
@@ -114,20 +128,22 @@ func (n *NSQD) lookupLoop() {
 				n.logf(LOG_DEBUG, "LOOKUPD(%s): sending heartbeat", lookupPeer)
 				cmd := nsq.Ping()
 				// 向nsqlookupd发送一个ping命令，但是没有关ping的返回值
+				// 如果没有ping通的话lookupPeer会变成disConnected状态
 				_, err := lookupPeer.Command(cmd)
 				if err != nil {
 					n.logf(LOG_ERROR, "LOOKUPD(%s): %s - %s", lookupPeer, cmd, err)
 				}
 			}
+		// notifyChan中收到了关于channel 和 topic 更新的消息，根据收到的消息，然后创建相应的CMD发送给nsqlookupd
 		case val := <-n.notifyChan:
 			var cmd *nsq.Command
 			var branch string
-			// notifyChan中收到了关于channel 和 topic 的消息，根据收到的消息，然后创建相应的CMD发送给nsqlookupd
 			switch val.(type) {
 			case *Channel:
 				// notify all nsqlookupds that a new channel exists, or that it's removed
 				branch = "channel"
 				channel := val.(*Channel)
+				// 如果channel已经退出，则进行unRegister；否则register
 				if channel.Exiting() == true {
 					cmd = nsq.UnRegister(channel.topicName, channel.name)
 				} else {
@@ -138,13 +154,13 @@ func (n *NSQD) lookupLoop() {
 				branch = "topic"
 				topic := val.(*Topic)
 				if topic.Exiting() == true {
+					// 同理如果Topic已经退出，则进行unRegister；否则 Register
 					cmd = nsq.UnRegister(topic.name, "")
 				} else {
 					cmd = nsq.Register(topic.name, "")
 				}
 			}
-
-			// 这些消息都是发出去之后不管返回值的。
+			// 依次向所有的lookupd同步消息，不过这些消息都是发出去之后不管返回值的。
 			for _, lookupPeer := range lookupPeers {
 				n.logf(LOG_INFO, "LOOKUPD(%s): %s %s", lookupPeer, branch, cmd)
 				_, err := lookupPeer.Command(cmd)
@@ -152,8 +168,8 @@ func (n *NSQD) lookupLoop() {
 					n.logf(LOG_ERROR, "LOOKUPD(%s): %s - %s", lookupPeer, cmd, err)
 				}
 			}
+		// 重新读取配置，在这里对连接的nsqlooup进行变更
 		case <-n.optsNotificationChan:
-			// 在这里对连接的nsqlooup进行变更
 			var tmpPeers []*lookupPeer
 			var tmpAddrs []string
 			for _, lp := range lookupPeers {

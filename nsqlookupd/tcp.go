@@ -13,6 +13,7 @@ type tcpServer struct {
 	conns sync.Map
 }
 
+// 处理Client连接
 func (p *tcpServer) Handle(clientConn net.Conn) {
 	p.ctx.nsqlookupd.logf(LOG_INFO, "TCP: new client(%s)", clientConn.RemoteAddr())
 
@@ -26,11 +27,11 @@ func (p *tcpServer) Handle(clientConn net.Conn) {
 		clientConn.Close()
 		return
 	}
+	// 获取命令头部字节
 	protocolMagic := string(buf)
+	p.ctx.nsqlookupd.logf(LOG_INFO, "CLIENT(%s): desired protocol magic '%s'", clientConn.RemoteAddr(), protocolMagic)
 
-	p.ctx.nsqlookupd.logf(LOG_INFO, "CLIENT(%s): desired protocol magic '%s'",
-		clientConn.RemoteAddr(), protocolMagic)
-
+	// NSQD和NSQLookup之间通信都是使用V1协议
 	var prot protocol.Protocol
 	switch protocolMagic {
 	case "  V1":
@@ -38,8 +39,7 @@ func (p *tcpServer) Handle(clientConn net.Conn) {
 	default:
 		protocol.SendResponse(clientConn, []byte("E_BAD_PROTOCOL"))
 		clientConn.Close()
-		p.ctx.nsqlookupd.logf(LOG_ERROR, "client(%s) bad protocol magic '%s'",
-			clientConn.RemoteAddr(), protocolMagic)
+		p.ctx.nsqlookupd.logf(LOG_ERROR, "client(%s) bad protocol magic '%s'", clientConn.RemoteAddr(), protocolMagic)
 		return
 	}
 

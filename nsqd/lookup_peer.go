@@ -93,19 +93,24 @@ func (lp *lookupPeer) Close() error {
 //
 // It returns the response from nsqlookupd as []byte
 func (lp *lookupPeer) Command(cmd *nsq.Command) ([]byte, error) {
+	// 记录初试状态
 	initialState := lp.state
 	if lp.state != stateConnected {
+		// 在这里尝试建立TCP连接
 		err := lp.Connect()
 		if err != nil {
 			return nil, err
 		}
-		// 连接成功后状态变为connected
+		// TCP连接成功后状态变为connected
 		lp.state = stateConnected
+		// TODO @lmj 这里为啥是MagicV1呢？
 		_, err = lp.Write(nsq.MagicV1)
 		if err != nil {
 			lp.Close()
 			return nil, err
 		}
+		// 如果最初的状态是stateDisconnected，则进行connectCallback
+		// 在connectCallback中同步topic channel信息
 		if initialState == stateDisconnected {
 			lp.connectCallback(lp)
 		}

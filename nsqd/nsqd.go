@@ -734,8 +734,7 @@ func (n *NSQD) queueScanLoop() {
 			goto loop
 		}
 	}
-
-	// 退出
+// 退出
 exit:
 	n.logf(LOG_INFO, "QUEUESCAN: closing")
 	close(closeCh)

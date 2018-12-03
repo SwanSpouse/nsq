@@ -13,12 +13,13 @@ type RegistrationDB struct {
 }
 
 type Registration struct {
-	Category string
-	Key      string
-	SubKey   string
+	Category string // 分类现在有client topic 和 channel 3类
+	Key      string // topic
+	SubKey   string // channel
 }
 type Registrations []Registration
 
+// 这里面放NSQD相关的内容
 type PeerInfo struct {
 	lastUpdate       int64
 	id               string
@@ -32,7 +33,7 @@ type PeerInfo struct {
 
 type Producer struct {
 	peerInfo     *PeerInfo
-	tombstoned   bool
+	tombstoned   bool // 墓碑？
 	tombstonedAt time.Time
 }
 
@@ -69,13 +70,16 @@ func (r *RegistrationDB) AddRegistration(k Registration) {
 }
 
 // add a producer to a registration
+// 向registration中增加一个producer
 func (r *RegistrationDB) AddProducer(k Registration, p *Producer) bool {
 	r.Lock()
 	defer r.Unlock()
+	// 如果当前topic或者channel下面没有NSQD，则创建一个空数组
 	_, ok := r.registrationMap[k]
 	if !ok {
 		r.registrationMap[k] = make(map[string]*Producer)
 	}
+	// 然后把NSQD放进去
 	producers := r.registrationMap[k]
 	_, found := producers[p.peerInfo.id]
 	if found == false {
@@ -85,6 +89,7 @@ func (r *RegistrationDB) AddProducer(k Registration, p *Producer) bool {
 }
 
 // remove a producer from a registration
+// 把NSQD从RegistrationDB中移除
 func (r *RegistrationDB) RemoveProducer(k Registration, id string) (bool, int) {
 	r.Lock()
 	defer r.Unlock()
@@ -96,7 +101,6 @@ func (r *RegistrationDB) RemoveProducer(k Registration, id string) (bool, int) {
 	if _, exists := producers[id]; exists {
 		removed = true
 	}
-
 	// Note: this leaves keys in the DB even if they have empty lists
 	delete(producers, id)
 	return removed, len(producers)
@@ -113,9 +117,11 @@ func (r *RegistrationDB) needFilter(key string, subkey string) bool {
 	return key == "*" || subkey == "*"
 }
 
+// 可以找到所有的Client Topic和Channel
 func (r *RegistrationDB) FindRegistrations(category string, key string, subkey string) Registrations {
 	r.RLock()
 	defer r.RUnlock()
+	// 判断是否需要通配符匹配
 	if !r.needFilter(key, subkey) {
 		k := Registration{category, key, subkey}
 		if _, ok := r.registrationMap[k]; ok {
@@ -133,6 +139,7 @@ func (r *RegistrationDB) FindRegistrations(category string, key string, subkey s
 	return results
 }
 
+// 找到所有的Producer 也就是NSQD
 func (r *RegistrationDB) FindProducers(category string, key string, subkey string) Producers {
 	r.RLock()
 	defer r.RUnlock()
@@ -144,9 +151,11 @@ func (r *RegistrationDB) FindProducers(category string, key string, subkey strin
 	results := make(map[string]struct{})
 	var retProducers Producers
 	for k, producers := range r.registrationMap {
+		// 判断是否符合要求
 		if !k.IsMatch(category, key, subkey) {
 			continue
 		}
+		// 遍历所有的producer
 		for _, producer := range producers {
 			_, found := results[producer.peerInfo.id]
 			if found == false {
@@ -158,6 +167,7 @@ func (r *RegistrationDB) FindProducers(category string, key string, subkey strin
 	return retProducers
 }
 
+// 这个ID是Producer的IP
 func (r *RegistrationDB) LookupRegistrations(id string) Registrations {
 	r.RLock()
 	defer r.RUnlock()
@@ -230,11 +240,11 @@ func (pp Producers) PeerInfo() []*PeerInfo {
 	return results
 }
 
+// 返回所有的NSQD
 func ProducerMap2Slice(pm ProducerMap) Producers {
 	var producers Producers
 	for _, producer := range pm {
 		producers = append(producers, producer)
 	}
-
 	return producers
 }

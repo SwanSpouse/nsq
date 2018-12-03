@@ -78,6 +78,7 @@ func (s *httpServer) doInfo(w http.ResponseWriter, req *http.Request, ps httprou
 }
 
 func (s *httpServer) doTopics(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
+	// 获取所有的topic
 	topics := s.ctx.nsqlookupd.DB.FindRegistrations("topic", "*", "").Keys()
 	return map[string]interface{}{
 		"topics": topics,
@@ -116,17 +117,18 @@ func (s *httpServer) doLookup(w http.ResponseWriter, req *http.Request, ps httpr
 	if len(registration) == 0 {
 		return nil, http_api.Err{404, "TOPIC_NOT_FOUND"}
 	}
-
+	// topic 下面所有的channels
 	channels := s.ctx.nsqlookupd.DB.FindRegistrations("channel", topicName, "*").SubKeys()
+	// topic 的所有producer
 	producers := s.ctx.nsqlookupd.DB.FindProducers("topic", topicName, "")
-	producers = producers.FilterByActive(s.ctx.nsqlookupd.opts.InactiveProducerTimeout,
-		s.ctx.nsqlookupd.opts.TombstoneLifetime)
+	producers = producers.FilterByActive(s.ctx.nsqlookupd.opts.InactiveProducerTimeout, s.ctx.nsqlookupd.opts.TombstoneLifetime)
 	return map[string]interface{}{
 		"channels":  channels,
 		"producers": producers.PeerInfo(),
 	}, nil
 }
 
+// 创建一个Topic
 func (s *httpServer) doCreateTopic(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	reqParams, err := http_api.NewReqParams(req)
 	if err != nil {
@@ -142,6 +144,7 @@ func (s *httpServer) doCreateTopic(w http.ResponseWriter, req *http.Request, ps 
 		return nil, http_api.Err{400, "INVALID_ARG_TOPIC"}
 	}
 
+	// 创建一个Topic 但是这个topic背后没有producer啊。
 	s.ctx.nsqlookupd.logf(LOG_INFO, "DB: adding topic(%s)", topicName)
 	key := Registration{"topic", topicName, ""}
 	s.ctx.nsqlookupd.DB.AddRegistration(key)
@@ -213,11 +216,11 @@ func (s *httpServer) doCreateChannel(w http.ResponseWriter, req *http.Request, p
 	if err != nil {
 		return nil, http_api.Err{400, err.Error()}
 	}
-
+	// 先注册channel
 	s.ctx.nsqlookupd.logf(LOG_INFO, "DB: adding channel(%s) in topic(%s)", channelName, topicName)
 	key := Registration{"channel", topicName, channelName}
 	s.ctx.nsqlookupd.DB.AddRegistration(key)
-
+	// 再注册topic
 	s.ctx.nsqlookupd.logf(LOG_INFO, "DB: adding topic(%s)", topicName)
 	key = Registration{"topic", topicName, ""}
 	s.ctx.nsqlookupd.DB.AddRegistration(key)
@@ -260,23 +263,22 @@ type node struct {
 	Topics           []string `json:"topics"`
 }
 
+// Returns a list of all known nsqd 返回所有已知的NSQD
 func (s *httpServer) doNodes(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
 	// dont filter out tombstoned nodes
-	producers := s.ctx.nsqlookupd.DB.FindProducers("client", "", "").FilterByActive(
-		s.ctx.nsqlookupd.opts.InactiveProducerTimeout, 0)
+	// 先筛选出来所有producer
+	producers := s.ctx.nsqlookupd.DB.FindProducers("client", "", "").FilterByActive(s.ctx.nsqlookupd.opts.InactiveProducerTimeout, 0)
 	nodes := make([]*node, len(producers))
 	topicProducersMap := make(map[string]Producers)
 	for i, p := range producers {
 		topics := s.ctx.nsqlookupd.DB.LookupRegistrations(p.peerInfo.id).Filter("topic", "*", "").Keys()
 
-		// for each topic find the producer that matches this peer
-		// to add tombstone information
+		// for each topic find the producer that matches this peer to add tombstone information
 		tombstones := make([]bool, len(topics))
 		for j, t := range topics {
 			if _, exists := topicProducersMap[t]; !exists {
 				topicProducersMap[t] = s.ctx.nsqlookupd.DB.FindProducers("topic", t, "")
 			}
-
 			topicProducers := topicProducersMap[t]
 			for _, tp := range topicProducers {
 				if tp.peerInfo == p.peerInfo {
@@ -285,7 +287,6 @@ func (s *httpServer) doNodes(w http.ResponseWriter, req *http.Request, ps httpro
 				}
 			}
 		}
-
 		nodes[i] = &node{
 			RemoteAddress:    p.peerInfo.RemoteAddress,
 			Hostname:         p.peerInfo.Hostname,
@@ -297,7 +298,6 @@ func (s *httpServer) doNodes(w http.ResponseWriter, req *http.Request, ps httpro
 			Topics:           topics,
 		}
 	}
-
 	return map[string]interface{}{
 		"producers": nodes,
 	}, nil
