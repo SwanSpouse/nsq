@@ -42,17 +42,20 @@ func main() {
 	rate := flag.Int64("rate", 0, "Throttle messages to n/second. 0 to disable")
 
 	flag.Parse()
-
+	//
 	if len(*topic) == 0 {
 		log.Fatal("--topic required")
 	}
-
+	// 分隔符最长一个字节
 	if len(*delimiter) != 1 {
 		log.Fatal("--delimiter must be a single byte")
 	}
 
 	stopChan := make(chan bool)
 	termChan := make(chan os.Signal, 1)
+
+	// syscall.SIGINT 用户发送INTR字符(Ctrl+C)触发
+	// syscall.SIGTERM 结束程序(可以被捕获、阻塞或忽略)
 	signal.Notify(termChan, syscall.SIGINT, syscall.SIGTERM)
 
 	cfg.UserAgent = fmt.Sprintf("to_nsq/%s go-nsq/%s", version.Binary, nsq.VERSION)
@@ -81,9 +84,11 @@ func main() {
 		interval = time.Second / time.Duration(*rate)
 	}
 	go func() {
+		// 阀门关了就直接返回
 		if !throttleEnabled {
 			return
 		}
+		// 每秒钟最多多少消息
 		log.Printf("Throttling messages rate to max:%d/second", *rate)
 		// every tick increase the number of messages we can send
 		for _ = range time.Tick(interval) {
