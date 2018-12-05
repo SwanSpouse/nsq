@@ -41,8 +41,9 @@ type TailHandler struct {
 }
 
 func (th *TailHandler) HandleMessage(m *nsq.Message) error {
+	// 已经展示的消息计数
 	th.messagesShown++
-
+	// 是否输出Topic
 	if *printTopic {
 		_, err := os.Stdout.WriteString(th.topicName)
 		if err != nil {
@@ -53,7 +54,7 @@ func (th *TailHandler) HandleMessage(m *nsq.Message) error {
 			log.Fatalf("ERROR: failed to write to os.Stdout - %s", err)
 		}
 	}
-
+	// 输出消息Body
 	_, err := os.Stdout.Write(m.Body)
 	if err != nil {
 		log.Fatalf("ERROR: failed to write to os.Stdout - %s", err)
@@ -62,6 +63,7 @@ func (th *TailHandler) HandleMessage(m *nsq.Message) error {
 	if err != nil {
 		log.Fatalf("ERROR: failed to write to os.Stdout - %s", err)
 	}
+	// 如果已经展示的消息达到totalMessages，则退出
 	if th.totalMessages > 0 && th.messagesShown >= th.totalMessages {
 		os.Exit(0)
 	}
@@ -105,27 +107,26 @@ func main() {
 	cfg.UserAgent = fmt.Sprintf("nsq_tail/%s go-nsq/%s", version.Binary, nsq.VERSION)
 	cfg.MaxInFlight = *maxInFlight
 
+	// 每一个Topic都会创建一个Consumer
 	consumers := []*nsq.Consumer{}
 	for i := 0; i < len(topics); i += 1 {
 		log.Printf("Adding consumer for topic: %s\n", topics[i])
-
 		consumer, err := nsq.NewConsumer(topics[i], *channel, cfg)
 		if err != nil {
 			log.Fatal(err)
 		}
-
+		// 给consumer添加handler
 		consumer.AddHandler(&TailHandler{topicName: topics[i], totalMessages: *totalMessages})
-
+		// consumer连接NSQD，这里不建议去连接NSQD。因为lookupd才能拥有完整的拓扑结构，这样可能会丢失NSQD
 		err = consumer.ConnectToNSQDs(nsqdTCPAddrs)
 		if err != nil {
 			log.Fatal(err)
 		}
-
+		// consumer链接NSQLookupd
 		err = consumer.ConnectToNSQLookupds(lookupdHTTPAddrs)
 		if err != nil {
 			log.Fatal(err)
 		}
-
 		consumers = append(consumers, consumer)
 	}
 

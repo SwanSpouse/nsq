@@ -27,6 +27,11 @@ var (
 	destNsqdTCPAddrs = app.StringArray{}
 )
 
+// 开始我还以为这个是通过nsqlookupd来查找nsqd呢
+// TODO @lmj Q 这里是不是可以加一个参数，通过nsqlookupd来查找nsqd
+// 参考一下别人是怎么通过nsqlookupd来找到nsqd的，不过他这个也不太适合用nsqlookupd来找到nsqd，
+// 因为它要向所有的NSQD里面写消息，这样不就重复了吗？
+// 所以我要加的功能应该是向Topic所在的所有NSQD随机发送消息
 func init() {
 	flag.Var(&destNsqdTCPAddrs, "nsqd-tcp-address", "destination nsqd TCP address (may be given multiple times)")
 }
@@ -54,7 +59,9 @@ func main() {
 
 	// make the producers
 	producers := make(map[string]*nsq.Producer)
+	// 它这个是直接连接NSQD？
 	for _, addr := range destNsqdTCPAddrs {
+		// 给每一个NSQD都创建一个producer
 		producer, err := nsq.NewProducer(addr, cfg)
 		if err != nil {
 			log.Fatalf("failed to create nsq.Producer - %s", err)
@@ -65,7 +72,7 @@ func main() {
 	if len(producers) == 0 {
 		log.Fatal("--nsqd-tcp-address required")
 	}
-
+	// 阀门
 	throttleEnabled := *rate >= 1
 	balance := int64(1)
 	// avoid divide by 0 if !throttleEnabled
@@ -98,6 +105,7 @@ func main() {
 				if currentBalance <= 0 {
 					time.Sleep(interval)
 				}
+				// 读取并发送消息
 				err = readAndPublish(r, delim, producers)
 				atomic.AddInt64(&balance, -1)
 			} else {
@@ -113,11 +121,12 @@ func main() {
 		}
 	}()
 
+	// 阻塞
 	select {
 	case <-termChan:
 	case <-stopChan:
 	}
-
+	// 停掉所有的producer
 	for _, producer := range producers {
 		producer.Stop()
 	}
@@ -126,8 +135,8 @@ func main() {
 // readAndPublish reads to the delim from r and publishes the bytes
 // to the map of producers.
 func readAndPublish(r *bufio.Reader, delim byte, producers map[string]*nsq.Producer) error {
+	// 读取消息
 	line, readErr := r.ReadBytes(delim)
-
 	if len(line) > 0 {
 		// trim the delimiter
 		line = line[:len(line)-1]
@@ -136,13 +145,12 @@ func readAndPublish(r *bufio.Reader, delim byte, producers map[string]*nsq.Produ
 	if len(line) == 0 {
 		return readErr
 	}
-
+	// 把消息发送给了所有的NSQD？这样不是所有的NSQD都重复了吗？
 	for _, producer := range producers {
 		err := producer.Publish(*topic, line)
 		if err != nil {
 			return err
 		}
 	}
-
 	return readErr
 }

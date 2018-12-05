@@ -215,7 +215,6 @@ func (t *Topic) PutMessages(msgs []*Message) error {
 		}
 		messageTotalBytes += len(m.Body)
 	}
-	// TODO @lmj Q 这里的计数逻辑是不是有问题啊。有可能上面put成功进去2条之后失败了，这里就没有把这两条记录上。
 	atomic.AddUint64(&t.messageBytes, uint64(messageTotalBytes))
 	return nil
 }
