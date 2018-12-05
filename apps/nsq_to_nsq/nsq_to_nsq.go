@@ -25,8 +25,8 @@ import (
 )
 
 const (
-	ModeRoundRobin = iota
-	ModeHostPool
+	ModeRoundRobin = iota // round robin 轮询调度
+	ModeHostPool          // epsilon-greedy 这个是随机
 )
 
 var (
@@ -265,7 +265,7 @@ func hasArg(s string) bool {
 }
 
 func main() {
-	var selectedMode int
+	var selectedMode int // 选择目标NSQD的模式
 
 	cCfg := nsq.NewConfig()
 	pCfg := nsq.NewConfig()
@@ -280,10 +280,11 @@ func main() {
 		return
 	}
 
+	// 可以额外再指定一个TOPIC
 	if len(topics) == 0 || *channel == "" {
 		log.Fatal("--topic and --channel are required")
 	}
-
+	// topic名称是否合法？
 	for _, topic := range topics {
 		if !protocol.IsValidTopicName(topic) {
 			log.Fatal("--topic is invalid")
@@ -305,10 +306,12 @@ func main() {
 		log.Fatal("use --nsqd-tcp-address or --lookupd-http-address not both")
 	}
 
+	// TODO @lmj 目标只有Nsqd是吗？
 	if len(destNsqdTCPAddrs) == 0 {
 		log.Fatal("--destination-nsqd-tcp-address required")
 	}
 
+	// 选择目标NSQD的两种模式，默认是hostpool或者说是epsilon-greedy这个是随机；另一种是round-robin这个是轮询。
 	switch *mode {
 	case "round-robin":
 		selectedMode = ModeRoundRobin
@@ -316,15 +319,17 @@ func main() {
 		selectedMode = ModeHostPool
 	}
 
+	// 接收程序终端信号
 	termChan := make(chan os.Signal, 1)
 	signal.Notify(termChan, syscall.SIGINT, syscall.SIGTERM)
-
+	// 默认user agent信息
 	defaultUA := fmt.Sprintf("nsq_to_nsq/%s go-nsq/%s", version.Binary, nsq.VERSION)
 
 	cCfg.UserAgent = defaultUA
 	cCfg.MaxInFlight = *maxInFlight
 	pCfg.UserAgent = defaultUA
 
+	// 根据目标的NSQD创建好所有的producer，一个NSQD一个并且根据addr放到map中
 	producers := make(map[string]*nsq.Producer)
 	for _, addr := range destNsqdTCPAddrs {
 		producer, err := nsq.NewProducer(addr, pCfg)
@@ -340,11 +345,11 @@ func main() {
 		perAddressStatus[destNsqdTCPAddrs[0]] = timer_metrics.NewTimerMetrics(0, "")
 	} else {
 		for _, a := range destNsqdTCPAddrs {
-			perAddressStatus[a] = timer_metrics.NewTimerMetrics(*statusEvery,
-				fmt.Sprintf("[%s]:", a))
+			perAddressStatus[a] = timer_metrics.NewTimerMetrics(*statusEvery, fmt.Sprintf("[%s]:", a))
 		}
 	}
 
+	// TODO @lmj 这里为啥hostpool和epsilon-greedy不一样了呢？它俩在上面不是一样的吗？
 	hostPool := hostpool.New(destNsqdTCPAddrs)
 	if *mode == "epsilon-greedy" {
 		hostPool = hostpool.NewEpsilonGreedy(destNsqdTCPAddrs, 0, &hostpool.LinearEpsilonValueCalculator{})
@@ -353,15 +358,16 @@ func main() {
 	var consumerList []*nsq.Consumer
 
 	publisher := &PublishHandler{
-		addresses:        destNsqdTCPAddrs,
-		producers:        producers,
-		mode:             selectedMode,
-		hostPool:         hostPool,
-		respChan:         make(chan *nsq.ProducerTransaction, len(destNsqdTCPAddrs)),
+		addresses:        destNsqdTCPAddrs,                                           // 目标的所有NSQD地址
+		producers:        producers,                                                  // 所有的producer
+		mode:             selectedMode,                                               // 模式
+		hostPool:         hostPool,                                                   // 目标的host池
+		respChan:         make(chan *nsq.ProducerTransaction, len(destNsqdTCPAddrs)), // 回复Chan
 		perAddressStatus: perAddressStatus,
 		timermetrics:     timer_metrics.NewTimerMetrics(*statusEvery, "[aggregate]:"),
 	}
 
+	// 根据topic来创建consumer，一个topic一个consumer
 	for _, topic := range topics {
 		consumer, err := nsq.NewConsumer(topic, *channel, cCfg)
 		consumerList = append(consumerList, consumer)
