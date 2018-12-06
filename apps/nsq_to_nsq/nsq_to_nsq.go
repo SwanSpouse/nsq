@@ -233,12 +233,15 @@ func (ph *PublishHandler) HandleMessage(m *nsq.Message, destinationTopic string)
 
 	switch ph.mode {
 	case ModeRoundRobin:
+		// 计数器
 		counter := atomic.AddUint64(&ph.counter, 1)
+		// 选择那个producer来进行produce
 		idx := counter % uint64(len(ph.addresses))
 		addr := ph.addresses[idx]
 		p := ph.producers[addr]
 		err = p.PublishAsync(destinationTopic, msgBody, ph.respChan, m, startTime, addr)
 	case ModeHostPool:
+		// TODO @lmj 讲道理这个不是随机的选取吗？
 		hostPoolResponse := ph.hostPool.Get()
 		p := ph.producers[hostPoolResponse.Host()]
 		err = p.PublishAsync(destinationTopic, msgBody, ph.respChan, m, startTime, hostPoolResponse)
@@ -389,14 +392,16 @@ func main() {
 		go publisher.responder()
 	}
 
+	// 消费者都是这样的。都是先连接NSQD然后再尝试连接NSQDLookupd
 	for _, consumer := range consumerList {
+		// 一旦连接上之后，consumer就开始接收消息，然后往producer里面发了。
 		err := consumer.ConnectToNSQDs(nsqdTCPAddrs)
 		if err != nil {
 			log.Fatal(err)
 		}
 	}
-
 	for _, consumer := range consumerList {
+		// 一旦连接上之后，consumer就开始接收消息，然后往producer里面发了。
 		err := consumer.ConnectToNSQLookupds(lookupdHTTPAddrs)
 		if err != nil {
 			log.Fatal(err)
