@@ -86,7 +86,7 @@ type clientV2 struct {
 	ConnectTime    time.Time
 	Channel        *Channel
 	ReadyStateChan chan int
-	ExitChan       chan int
+	ExitChan       chan int // 收到消息，表示Client已经退出
 
 	ClientID string
 	Hostname string
@@ -119,7 +119,7 @@ func newClientV2(id int64, conn net.Conn, ctx *context) *clientV2 {
 		ID:  id,
 		ctx: ctx,
 
-		Conn: conn,
+		Conn: conn, // TCP connection
 
 		Reader: bufio.NewReaderSize(conn, defaultBufferSize),
 		Writer: bufio.NewWriterSize(conn, defaultBufferSize),
@@ -127,19 +127,19 @@ func newClientV2(id int64, conn net.Conn, ctx *context) *clientV2 {
 		OutputBufferSize:    defaultBufferSize,
 		OutputBufferTimeout: ctx.nsqd.getOpts().OutputBufferTimeout,
 
-		MsgTimeout: ctx.nsqd.getOpts().MsgTimeout,
+		MsgTimeout: ctx.nsqd.getOpts().MsgTimeout, // Timeout时间
 
 		// ReadyStateChan has a buffer of 1 to guarantee that in the event
 		// there is a race the state update is not lost
 		ReadyStateChan: make(chan int, 1),
 		ExitChan:       make(chan int),
 		ConnectTime:    time.Now(),
-		State:          stateInit,
+		State:          stateInit, // 初始状态
 
 		ClientID: identifier,
 		Hostname: identifier,
 
-		SubEventChan:      make(chan *Channel, 1),
+		SubEventChan:      make(chan *Channel, 1), // 订阅事件
 		IdentifyEventChan: make(chan identifyEvent, 1),
 
 		// heartbeats are client configurable but default to 30s
