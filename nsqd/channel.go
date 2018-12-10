@@ -287,6 +287,7 @@ func (c *Channel) doPause(pause bool) error {
 	return nil
 }
 
+// 判断Client是否暂停
 func (c *Channel) IsPaused() bool {
 	return atomic.LoadInt32(&c.paused) == 1
 }

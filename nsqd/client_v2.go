@@ -82,11 +82,11 @@ type clientV2 struct {
 
 	MsgTimeout time.Duration
 
-	State          int32
-	ConnectTime    time.Time
-	Channel        *Channel
-	ReadyStateChan chan int
-	ExitChan       chan int // 收到消息，表示Client已经退出
+	State          int32     // 状态
+	ConnectTime    time.Time // 连接时间
+	Channel        *Channel  // 订阅的channel
+	ReadyStateChan chan int  // TODO @lmj 这个的作用没看懂
+	ExitChan       chan int  // 收到消息，表示Client已经退出
 
 	ClientID string
 	Hostname string
@@ -315,19 +315,20 @@ func (c *clientV2) IsReadyForMessages() bool {
 	if c.Channel.IsPaused() {
 		return false
 	}
-
+	// 客户端当前准备接收的消息数量
 	readyCount := atomic.LoadInt64(&c.ReadyCount)
 	inFlightCount := atomic.LoadInt64(&c.InFlightCount)
 
 	c.ctx.nsqd.logf(LOG_DEBUG, "[%s] state rdy: %4d inflt: %4d", c, readyCount, inFlightCount)
 
+	// 如果inFlightQueue中已经包含了大于readyCount的消息，则判定为未准备好。
 	if inFlightCount >= readyCount || readyCount <= 0 {
 		return false
 	}
-
 	return true
 }
 
+// 调整Client的readyCount容量大小
 func (c *clientV2) SetReadyCount(count int64) {
 	oldCount := atomic.SwapInt64(&c.ReadyCount, count)
 
@@ -341,6 +342,7 @@ func (c *clientV2) tryUpdateReadyState() {
 	// where you cannot the message pump loop would have iterated anyway.
 	// the atomic integer operations guarantee correctness of the value.
 	select {
+	// 向channel发送一条数据，触发messagePump刷新ReadyCount值
 	case c.ReadyStateChan <- 1:
 	default:
 	}
