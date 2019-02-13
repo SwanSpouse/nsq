@@ -318,9 +318,6 @@ func (c *Channel) put(m *Message) error {
 	default:
 		// 如果发送到memoryMsgChan的消息阻塞了，会到这里。
 		c.ctx.nsqd.logf(LOG_INFO, MingjiDebugPrefix+"channel put message to backendChan. %s", m.Body)
-	default:
-		// 如果发送到memoryMsgChan的消息阻塞了，会到这里。
-		c.ctx.nsqd.logf(LOG_INFO, MingjiDebugPrefix+"channel put message to backendChan. %s", m.Body)
 		b := bufferPoolGet()
 		// 将message 持久化
 		err := writeMessageToBackend(b, m, c.backend)

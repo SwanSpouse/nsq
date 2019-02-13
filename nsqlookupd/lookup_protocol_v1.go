@@ -99,17 +99,21 @@ func getTopicChan(command string, params []string) (string, string, error) {
 	if len(params) == 0 {
 		return "", "", protocol.NewFatalClientErr(nil, "E_INVALID", fmt.Sprintf("%s insufficient number of params", command))
 	}
+
 	topicName := params[0]
 	var channelName string
 	if len(params) >= 2 {
 		channelName = params[1]
 	}
+
 	if !protocol.IsValidTopicName(topicName) {
 		return "", "", protocol.NewFatalClientErr(nil, "E_BAD_TOPIC", fmt.Sprintf("%s topic name '%s' is not valid", command, topicName))
 	}
+
 	if channelName != "" && !protocol.IsValidChannelName(channelName) {
 		return "", "", protocol.NewFatalClientErr(nil, "E_BAD_CHANNEL", fmt.Sprintf("%s channel name '%s' is not valid", command, channelName))
 	}
+
 	return topicName, channelName, nil
 }
 
@@ -171,17 +175,14 @@ func (p *LookupProtocolV1) UNREGISTER(client *ClientV1, reader *bufio.Reader, pa
 			if removed {
 				p.ctx.nsqlookupd.logf(LOG_WARN, "client(%s) unexpected UNREGISTER category:%s key:%s subkey:%s",
 					client, "channel", topic, r.SubKey)
-			if removed, _ := p.ctx.nsqlookupd.DB.RemoveProducer(r, client.peerInfo.id); removed {
-				p.ctx.nsqlookupd.logf(LOG_WARN, "client(%s) unexpected UNREGISTER category:%s key:%s subkey:%s", client, "channel", topic, r.SubKey)
 			}
 		}
+
 		key := Registration{"topic", topic, ""}
 		removed, left := p.ctx.nsqlookupd.DB.RemoveProducer(key, client.peerInfo.id)
 		if removed {
 			p.ctx.nsqlookupd.logf(LOG_INFO, "DB: client(%s) UNREGISTER category:%s key:%s subkey:%s",
 				client, "topic", topic, "")
-		if removed, _ := p.ctx.nsqlookupd.DB.RemoveProducer(key, client.peerInfo.id); removed {
-			p.ctx.nsqlookupd.logf(LOG_INFO, "DB: client(%s) UNREGISTER category:%s key:%s subkey:%s", client, "topic", topic, "")
 		}
 		if left == 0 && strings.HasSuffix(topic, "#ephemeral") {
 			p.ctx.nsqlookupd.DB.RemoveRegistration(key)
