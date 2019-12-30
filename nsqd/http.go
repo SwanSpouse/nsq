@@ -43,6 +43,7 @@ func newHTTPServer(ctx *context, tlsEnabled bool, tlsRequired bool) *httpServer 
 
 	router := httprouter.New()
 	router.HandleMethodNotAllowed = true
+	// 放几个中间件
 	router.PanicHandler = http_api.LogPanicHandler(ctx.nsqd.logf)
 	router.NotFound = http_api.LogNotFoundHandler(ctx.nsqd.logf)
 	router.MethodNotAllowed = http_api.LogMethodNotAllowedHandler(ctx.nsqd.logf)
@@ -52,7 +53,7 @@ func newHTTPServer(ctx *context, tlsEnabled bool, tlsRequired bool) *httpServer 
 		tlsRequired: tlsRequired,
 		router:      router,
 	}
-
+	// 注册各种router
 	router.Handle("GET", "/ping", http_api.Decorate(s.pingHandler, log, http_api.PlainText))
 	router.Handle("GET", "/info", http_api.Decorate(s.doInfo, log, http_api.V1))
 

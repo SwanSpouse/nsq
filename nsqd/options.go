@@ -30,10 +30,10 @@ type Options struct {
 	HTTPClientRequestTimeout time.Duration `flag:"http-client-request-timeout" cfg:"http_client_request_timeout"`
 
 	// diskqueue options
-	DataPath        string        `flag:"data-path"`
-	MemQueueSize    int64         `flag:"mem-queue-size"`
-	MaxBytesPerFile int64         `flag:"max-bytes-per-file"`
-	SyncEvery       int64         `flag:"sync-every"`
+	DataPath        string        `flag:"data-path"`          // 数据文件位置
+	MemQueueSize    int64         `flag:"mem-queue-size"`     // 内存大小
+	MaxBytesPerFile int64         `flag:"max-bytes-per-file"` // 每个文件最大允许多少个字节
+	SyncEvery       int64         `flag:"sync-every"`         // 每隔多长时间进行一次同步
 	SyncTimeout     time.Duration `flag:"sync-timeout"`
 
 	QueueScanInterval        time.Duration
@@ -94,6 +94,7 @@ func NewOptions() *Options {
 	io.WriteString(h, hostname)
 	defaultID := int64(crc32.ChecksumIEEE(h.Sum(nil)) % 1024)
 
+	// 默认参数
 	return &Options{
 		ID:        defaultID,
 		LogPrefix: "[nsqd] ",

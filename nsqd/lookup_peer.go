@@ -16,14 +16,15 @@ import (
 // A lookupPeer instance is designed to connect lazily to nsqlookupd and reconnect
 // gracefully (i.e. it is all handled by the library).  Clients can simply use the
 // Command interface to perform a round-trip.
+// 链接NSQLookupd的一个Client
 type lookupPeer struct {
 	logf            lg.AppLogFunc
-	addr            string
-	conn            net.Conn
-	state           int32
-	connectCallback func(*lookupPeer)
-	maxBodySize     int64
-	Info            peerInfo
+	addr            string            // 远端ip
+	conn            net.Conn          // 链接
+	state           int32             // state
+	connectCallback func(*lookupPeer) // 连接成功的callback
+	maxBodySize     int64             // 最大body的size
+	Info            peerInfo          // peer clientInfo
 }
 
 // peerInfo contains metadata for a lookupPeer instance (and is JSON marshalable)
@@ -49,6 +50,7 @@ func newLookupPeer(addr string, maxBodySize int64, l lg.AppLogFunc, connectCallb
 
 // Connect will Dial the specified address, with timeouts
 func (lp *lookupPeer) Connect() error {
+	// TODO @limingji Close都把修改status放在自己函数内了，Connect没有这做
 	// 尝试进行连接
 	lp.logf(lg.INFO, "LOOKUP connecting to %s", lp.addr)
 	conn, err := net.DialTimeout("tcp", lp.addr, time.Second)
@@ -103,7 +105,6 @@ func (lp *lookupPeer) Command(cmd *nsq.Command) ([]byte, error) {
 		}
 		// TCP连接成功后状态变为connected
 		lp.state = stateConnected
-		// TODO @lmj 这里为啥是MagicV1呢？
 		_, err = lp.Write(nsq.MagicV1)
 		if err != nil {
 			lp.Close()
@@ -134,6 +135,7 @@ func (lp *lookupPeer) Command(cmd *nsq.Command) ([]byte, error) {
 		lp.Close()
 		return nil, err
 	}
+	// 命令返回值
 	return resp, nil
 }
 

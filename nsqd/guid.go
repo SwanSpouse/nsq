@@ -16,6 +16,7 @@ import (
 	"time"
 )
 
+// 这一波bits操作就看不懂了
 const (
 	nodeIDBits     = uint64(10)
 	sequenceBits   = uint64(12)
@@ -36,12 +37,13 @@ type guid int64
 type guidFactory struct {
 	sync.Mutex
 
-	nodeID        int64
-	sequence      int64
-	lastTimestamp int64
-	lastID        guid
+	nodeID        int64 // nodeId
+	sequence      int64 //
+	lastTimestamp int64 // 时间戳
+	lastID        guid  // 上一次生成的id
 }
 
+// New一个工厂类；用于生成Guid
 func NewGUIDFactory(nodeID int64) *guidFactory {
 	return &guidFactory{
 		nodeID: nodeID,
@@ -50,9 +52,10 @@ func NewGUIDFactory(nodeID int64) *guidFactory {
 
 // 生成全局ID
 func (f *guidFactory) NewGUID() (guid, error) {
+	// TODO @limingji 这里加锁是否影响了消息ID生成的效率
+	// TODO @limingji 我发现这个项目里面的好多Lock都没有在defer里面进行unlock
 	f.Lock()
-
-	// divide by 1048576, giving pseudo-milliseconds
+	// divide by 2^20=1048576, giving pseudo-milliseconds
 	// 根据时间来生成GUID
 	ts := time.Now().UnixNano() >> 20
 
@@ -60,7 +63,6 @@ func (f *guidFactory) NewGUID() (guid, error) {
 		f.Unlock()
 		return 0, ErrTimeBackwards
 	}
-
 	if f.lastTimestamp == ts {
 		f.sequence = (f.sequence + 1) & sequenceMask
 		if f.sequence == 0 {
@@ -72,7 +74,6 @@ func (f *guidFactory) NewGUID() (guid, error) {
 	}
 
 	f.lastTimestamp = ts
-
 	id := guid(((ts - twepoch) << timestampShift) |
 		(f.nodeID << nodeIDShift) |
 		f.sequence)
@@ -83,9 +84,7 @@ func (f *guidFactory) NewGUID() (guid, error) {
 	}
 
 	f.lastID = id
-
 	f.Unlock()
-
 	return id, nil
 }
 

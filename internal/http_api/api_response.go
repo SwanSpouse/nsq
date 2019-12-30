@@ -44,16 +44,18 @@ func PlainText(f APIHandler) APIHandler {
 		}
 		switch d := data.(type) {
 		case string:
+			// 在这里就把数据写出去了
 			w.WriteHeader(code)
 			io.WriteString(w, d)
 		case []byte:
+			// 在这里就把数据写出去了
 			w.WriteHeader(code)
 			w.Write(d)
 		default:
 			// 在这里打出未知数据类型
+			// TODO @limingji 这里的校验很强啊
 			panic(fmt.Sprintf("unknown response type %T", data))
 		}
-		// TODO @lmj 这里不应该把f的执行结果原路返回吗？？？其实是在上面直接写入到response里面去了。
 		return nil, nil
 	}
 }
@@ -70,12 +72,14 @@ func V1(f APIHandler) APIHandler {
 	}
 }
 
+// http version 1.0的返回值
 func RespondV1(w http.ResponseWriter, code int, data interface{}) {
 	var response []byte
 	var err error
 	var isJSON bool
 
 	if code == 200 {
+		// 首先将数据统一成bytes
 		switch data.(type) {
 		case string:
 			response = []byte(data.(string))
@@ -92,19 +96,22 @@ func RespondV1(w http.ResponseWriter, code int, data interface{}) {
 			}
 		}
 	}
-
+	// 检查code
 	if code != 200 {
 		isJSON = true
+		// 这个json.Marshal基本上没有时候会返回error吧
 		response, _ = json.Marshal(struct {
 			Message string `json:"message"`
 		}{fmt.Sprintf("%s", data)})
 	}
-
+	//  如果是Json数据的话，则写入Content-Type的json类型
 	if isJSON {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	}
 	w.Header().Set("X-NSQ-Content-Type", "nsq; version=1.0")
+	// 写入状态码
 	w.WriteHeader(code)
+	// 写入response
 	w.Write(response)
 }
 
@@ -134,6 +141,7 @@ func V12(f APIHandler) APIHandler {
 	}
 }
 
+// 通过log来记录所有的请求
 func Log(logf lg.AppLogFunc) Decorator {
 	return func(f APIHandler) APIHandler {
 		return func(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
@@ -152,6 +160,7 @@ func Log(logf lg.AppLogFunc) Decorator {
 	}
 }
 
+// 处理Panic
 func LogPanicHandler(logf lg.AppLogFunc) func(w http.ResponseWriter, req *http.Request, p interface{}) {
 	return func(w http.ResponseWriter, req *http.Request, p interface{}) {
 		logf(lg.ERROR, "panic in HTTP handler - %s", p)
@@ -161,6 +170,7 @@ func LogPanicHandler(logf lg.AppLogFunc) func(w http.ResponseWriter, req *http.R
 	}
 }
 
+// 处理未找到的方法
 func LogNotFoundHandler(logf lg.AppLogFunc) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		Decorate(func(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
@@ -169,6 +179,7 @@ func LogNotFoundHandler(logf lg.AppLogFunc) http.Handler {
 	})
 }
 
+// 处理Method不对的情况 e.g. 要post给get
 func LogMethodNotAllowedHandler(logf lg.AppLogFunc) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		Decorate(func(w http.ResponseWriter, req *http.Request, ps httprouter.Params) (interface{}, error) {
