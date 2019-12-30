@@ -42,14 +42,14 @@ func (p *tcpServer) Handle(clientConn net.Conn) {
 		p.ctx.nsqlookupd.logf(LOG_ERROR, "client(%s) bad protocol magic '%s'", clientConn.RemoteAddr(), protocolMagic)
 		return
 	}
-
+	// 记录远端的ClientIp & conn
 	p.conns.Store(clientConn.RemoteAddr(), clientConn)
 
 	err = prot.IOLoop(clientConn)
 	if err != nil {
 		p.ctx.nsqlookupd.logf(LOG_ERROR, "client(%s) - %s", clientConn.RemoteAddr(), err)
 	}
-
+	// 删除ClientIp & conn
 	p.conns.Delete(clientConn.RemoteAddr())
 }
 

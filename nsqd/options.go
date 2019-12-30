@@ -12,6 +12,7 @@ import (
 	"github.com/nsqio/nsq/internal/lg"
 )
 
+// NSQ所有的配置项
 type Options struct {
 	// basic options
 	ID        int64       `flag:"node-id" cfg:"id"`

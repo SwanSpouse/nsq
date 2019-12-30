@@ -17,6 +17,7 @@ import (
 	"github.com/nsqio/nsq/internal/version"
 )
 
+// loopUpProtocol是V1
 type LookupProtocolV1 struct {
 	ctx *Context
 }

@@ -52,20 +52,20 @@ type NSQD struct {
 	dl        *dirlock.DirLock // 文件锁；从开始一直锁到退出
 	isLoading int32
 	errValue  atomic.Value
-	startTime time.Time
+	startTime time.Time // 启动时间
 
-	topicMap map[string]*Topic
+	topicMap map[string]*Topic // nsqd所管辖的topic
 
-	clientLock sync.RWMutex
-	clients    map[int64]Client
+	clientLock sync.RWMutex     // client读写锁
+	clients    map[int64]Client //
 
 	lookupPeers atomic.Value
 
-	tcpServer     *tcpServer
-	tcpListener   net.Listener
-	httpListener  net.Listener
-	httpsListener net.Listener
-	tlsConfig     *tls.Config
+	tcpServer     *tcpServer   // tcp
+	tcpListener   net.Listener // tcp
+	httpListener  net.Listener // http
+	httpsListener net.Listener // https
+	tlsConfig     *tls.Config  // tls
 
 	poolSize int // 当前处理defer queue和priority queue 协程的个数
 
@@ -77,6 +77,7 @@ type NSQD struct {
 	ci *clusterinfo.ClusterInfo // 获取集群相关信息的Client
 }
 
+// 创建一个NSQD
 func New(opts *Options) (*NSQD, error) {
 	var err error
 	// 配置的数据路径
@@ -167,32 +168,38 @@ func New(opts *Options) (*NSQD, error) {
 	n.logf(LOG_INFO, "ID: %d", opts.ID)
 
 	n.tcpServer = &tcpServer{}
+	// 监听TCP
 	n.tcpListener, err = net.Listen("tcp", opts.TCPAddress)
 	if err != nil {
 		return nil, fmt.Errorf("listen (%s) failed - %s", opts.TCPAddress, err)
 	}
+	// 监听http
 	n.httpListener, err = net.Listen("tcp", opts.HTTPAddress)
 	if err != nil {
 		return nil, fmt.Errorf("listen (%s) failed - %s", opts.HTTPAddress, err)
 	}
+	// 监听https
+	// TODO @limingji 平时我们写代码的时候为啥没有特别的支出需要监听https还是http呢？
 	if n.tlsConfig != nil && opts.HTTPSAddress != "" {
 		n.httpsListener, err = tls.Listen("tcp", opts.HTTPSAddress, n.tlsConfig)
 		if err != nil {
 			return nil, fmt.Errorf("listen (%s) failed - %s", opts.HTTPSAddress, err)
 		}
 	}
-
 	return n, nil
 }
 
+// 获取配置
 func (n *NSQD) getOpts() *Options {
 	return n.opts.Load().(*Options)
 }
 
+// 存储配置
 func (n *NSQD) swapOpts(opts *Options) {
 	n.opts.Store(opts)
 }
 
+// 触发配置变动
 func (n *NSQD) triggerOptsNotification() {
 	select {
 	case n.optsNotificationChan <- struct{}{}:
@@ -212,19 +219,23 @@ func (n *NSQD) RealHTTPSAddr() *net.TCPAddr {
 	return n.httpsListener.Addr().(*net.TCPAddr)
 }
 
+// 设置健康状态
 func (n *NSQD) SetHealth(err error) {
 	n.errValue.Store(errStore{err: err})
 }
 
+// 是否健康
 func (n *NSQD) IsHealthy() bool {
 	return n.GetError() == nil
 }
 
+// 获取error
 func (n *NSQD) GetError() error {
 	errValue := n.errValue.Load()
 	return errValue.(errStore).err
 }
 
+// 获取健康状况
 func (n *NSQD) GetHealth() string {
 	err := n.GetError()
 	if err != nil {
@@ -233,20 +244,24 @@ func (n *NSQD) GetHealth() string {
 	return "OK"
 }
 
+// 获取启动时间
 func (n *NSQD) GetStartTime() time.Time {
 	return n.startTime
 }
 
+// 增加client
 func (n *NSQD) AddClient(clientID int64, client Client) {
 	n.clientLock.Lock()
 	n.clients[clientID] = client
 	n.clientLock.Unlock()
 }
 
+// 删除Client
 func (n *NSQD) RemoveClient(clientID int64) {
 	n.clientLock.Lock()
 	_, ok := n.clients[clientID]
 	if !ok {
+		// TODO limingji 这些都是可以挪到defer里面的
 		n.clientLock.Unlock()
 		return
 	}
@@ -254,11 +269,13 @@ func (n *NSQD) RemoveClient(clientID int64) {
 	n.clientLock.Unlock()
 }
 
+// 主函数
 func (n *NSQD) Main() error {
 	ctx := &context{n}
-
+	//  退出标志
 	exitCh := make(chan error)
 	var once sync.Once
+	// 退出的func
 	exitFunc := func(err error) {
 		once.Do(func() {
 			if err != nil {
@@ -269,15 +286,17 @@ func (n *NSQD) Main() error {
 	}
 
 	n.tcpServer.ctx = ctx
+	// 塞到waitGroup里
 	n.waitGroup.Wrap(func() {
 		exitFunc(protocol.TCPServer(n.tcpListener, n.tcpServer, n.logf))
 	})
 
 	httpServer := newHTTPServer(ctx, false, n.getOpts().TLSRequired == TLSRequired)
+	// 塞到waitGroup里
 	n.waitGroup.Wrap(func() {
 		exitFunc(http_api.Serve(n.httpListener, httpServer, "HTTP", n.logf))
 	})
-
+	// 塞到waitGroup里
 	if n.tlsConfig != nil && n.getOpts().HTTPSAddress != "" {
 		httpsServer := newHTTPServer(ctx, true, true)
 		n.waitGroup.Wrap(func() {
@@ -293,7 +312,6 @@ func (n *NSQD) Main() error {
 	if n.getOpts().StatsdAddress != "" {
 		n.waitGroup.Wrap(n.statsdLoop)
 	}
-
 	err := <-exitCh
 	return err
 }
