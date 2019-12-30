@@ -49,7 +49,7 @@ type NSQD struct {
 
 	opts atomic.Value
 
-	dl        *dirlock.DirLock
+	dl        *dirlock.DirLock // 文件锁；从开始一直锁到退出
 	isLoading int32
 	errValue  atomic.Value
 	startTime time.Time
@@ -74,47 +74,55 @@ type NSQD struct {
 	exitChan             chan int
 	waitGroup            util.WaitGroupWrapper
 
-	ci *clusterinfo.ClusterInfo
+	ci *clusterinfo.ClusterInfo // 获取集群相关信息的Client
 }
 
 func New(opts *Options) (*NSQD, error) {
 	var err error
-
+	// 配置的数据路径
 	dataPath := opts.DataPath
 	if opts.DataPath == "" {
 		cwd, _ := os.Getwd()
 		dataPath = cwd
 	}
+	// 如果logger没有指定，那么就是用默认的logger
 	if opts.Logger == nil {
 		opts.Logger = log.New(os.Stderr, opts.LogPrefix, log.Ldate|log.Ltime|log.Lmicroseconds)
 	}
-
+	// 创建一个nsqd
 	n := &NSQD{
-		startTime:            time.Now(),
-		topicMap:             make(map[string]*Topic),
-		clients:              make(map[int64]Client),
-		exitChan:             make(chan int),
-		notifyChan:           make(chan interface{}),
-		optsNotificationChan: make(chan struct{}, 1),
-		dl:                   dirlock.New(dataPath),
+		startTime:            time.Now(),              // 启动时间
+		topicMap:             make(map[string]*Topic), // topic name -> topic
+		clients:              make(map[int64]Client),  // client map
+		exitChan:             make(chan int),          // 退出chan
+		notifyChan:           make(chan interface{}),  // 通知chan
+		optsNotificationChan: make(chan struct{}, 1),  // ops chan
+		dl:                   dirlock.New(dataPath),   // 文件锁
 	}
+	// 创建一个httpClient
 	httpcli := http_api.NewClient(nil, opts.HTTPClientConnectTimeout, opts.HTTPClientRequestTimeout)
 	n.ci = clusterinfo.New(n.logf, httpcli)
-
+	// loopupPeer
 	n.lookupPeers.Store([]*lookupPeer{})
-
+	// 存储配置
 	n.swapOpts(opts)
+	// 存err
 	n.errValue.Store(errStore{})
-
+	// 文件锁
 	err = n.dl.Lock()
 	if err != nil {
 		return nil, fmt.Errorf("failed to lock data-path: %v", err)
 	}
-
+	/**
+	deflate_level (nsqd v0.2.23+) 配置 deflate 压缩这次连接的级别
+	--max-deflate-level (nsqd 标志位) 配置允许的最大值
+	有效范围: 1 <= deflate_level <= configured_max
+	值越高压缩率越好，但是 CPU 负载也高。
+	*/
 	if opts.MaxDeflateLevel < 1 || opts.MaxDeflateLevel > 9 {
 		return nil, errors.New("--max-deflate-level must be [1,9]")
 	}
-
+	// check node id
 	if opts.ID < 0 || opts.ID >= 1024 {
 		return nil, errors.New("--node-id must be [0,1024)")
 	}
@@ -133,17 +141,20 @@ func New(opts *Options) (*NSQD, error) {
 		opts.StatsdPrefix = prefixWithHost
 	}
 
+	// TLS(Transport layer layer)是一种安全协议，目的为互联网通信提供安全及完整性保障
 	if opts.TLSClientAuthPolicy != "" && opts.TLSRequired == TLSNotRequired {
 		opts.TLSRequired = TLSRequired
 	}
-
+	//  tls 相关配置
 	tlsConfig, err := buildTLSConfig(opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build TLS config - %s", err)
 	}
+	// tls的配置为空；但是缺需要tls的认证
 	if tlsConfig == nil && opts.TLSRequired != TLSNotRequired {
 		return nil, errors.New("cannot require TLS client connections without TLS key and cert")
 	}
+	// 指定tls配置
 	n.tlsConfig = tlsConfig
 
 	for _, v := range opts.E2EProcessingLatencyPercentiles {
@@ -151,7 +162,7 @@ func New(opts *Options) (*NSQD, error) {
 			return nil, fmt.Errorf("invalid E2E processing latency percentile: %v", v)
 		}
 	}
-
+	// 输出当前nsqd的版本、系统版本和nsqd的id
 	n.logf(LOG_INFO, version.String("nsqd"))
 	n.logf(LOG_INFO, "ID: %d", opts.ID)
 
@@ -734,7 +745,7 @@ func (n *NSQD) queueScanLoop() {
 			goto loop
 		}
 	}
-// 退出
+	// 退出
 exit:
 	n.logf(LOG_INFO, "QUEUESCAN: closing")
 	close(closeCh)
