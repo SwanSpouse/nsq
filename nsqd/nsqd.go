@@ -504,8 +504,10 @@ func (n *NSQD) Exit() {
 // GetTopic performs a thread safe operation
 // to return a pointer to a Topic object (potentially new)
 // GetOrCreate a Topic
+// 这里如果不存在Topic的话会创建一个
 func (n *NSQD) GetTopic(topicName string) *Topic {
 	// most likely, we already have this topic, so try read lock first.
+	// 加读锁就可以了
 	n.RLock()
 	t, ok := n.topicMap[topicName]
 	n.RUnlock()
@@ -521,6 +523,7 @@ func (n *NSQD) GetTopic(topicName string) *Topic {
 	}
 	// 设置删除此topic的callback
 	deleteCallback := func(t *Topic) {
+		// 删除topic
 		n.DeleteExistingTopic(t.name)
 	}
 	// 若没有找到的话就会创建一个Topic
@@ -588,6 +591,8 @@ func (n *NSQD) DeleteExistingTopic(topicName string) error {
 	// to enforce ordering
 	topic.Delete()
 
+	// TODO @limingji 这些地方都是加锁两次；是不是可以进行一次优化
+	// 加读锁是因为读锁足以处理大多数的场景；
 	n.Lock()
 	delete(n.topicMap, topicName)
 	n.Unlock()
